@@ -1,0 +1,232 @@
+//@version=5
+// ╔══════════════════════════════════════════════════════╗
+// ║   FET/USDT 15m — Multi-Strategy Indicator          ║
+// ║   Trading28 Project — جميع الاستراتيجيات في مؤشر واحد  ║
+// ╚══════════════════════════════════════════════════════╝
+indicator("📊 28P Strategies", overlay=true, max_labels_count=500)
+
+// ═══════════════════════════════════════════════════════
+//  إعدادات التحكم — Checkboxes
+// ═══════════════════════════════════════════════════════
+
+// --- Group 1: Bollinger Bands + Indicators ---
+show_bb_mfi  = input.bool(true,  "⭐ BB+MFI (90%)",  group="BB + مؤشرات", inline="bb")
+show_bb_rsi  = input.bool(false, "BB+RSI",            group="BB + مؤشرات", inline="bb2")
+show_bb_cci  = input.bool(false, "BB+CCI",            group="BB + مؤشرات", inline="bb3")
+show_bb_obv  = input.bool(false, "BB+OBV",            group="BB + مؤشرات", inline="bb4")
+show_bb_willr = input.bool(false,"BB+WillR",          group="BB + مؤشرات", inline="bb5")
+
+// --- Group 2: Other Strategies ---
+show_ichi    = input.bool(false, "☁️ إيشيموكو",       group="استراتيجيات أخرى")
+show_ma_cross = input.bool(false,"📈 MA تقاطع",       group="استراتيجيات أخرى")
+
+// --- Signal Settings ---
+show_labels  = input.bool(true,  "تسمية الإشارات",    group="إعدادات العرض")
+label_size   = input.string("small", "حجم التسمية",   options=["tiny","small","normal","large"], group="إعدادات العرض")
+
+// --- PA Settings ---
+pin_body_ratio = input.float(1.0, "نسبة جسم البين بار", minval=0.5, maxval=3.0, step=0.1, group="برايس أكشن")
+pin_wick_ratio = input.float(0.5, "نسبة ذيل البين بار", minval=0.3, maxval=0.8, step=0.05, group="برايس أكشن")
+
+// ═══════════════════════════════════════════════════════
+//  المؤشرات الأساسية (تُحسب دائماً)
+// ═══════════════════════════════════════════════════════
+
+// === Bollinger Bands ===
+bb_period = 20
+bb_stddev = 2.0
+bb_basis = ta.sma(close, bb_period)
+bb_dev   = ta.stdev(close, bb_period) * bb_stddev
+bb_upper = bb_basis + bb_dev
+bb_lower = bb_basis - bb_dev
+bb_touch = low <= bb_lower
+
+// === MFI (Money Flow Index — حساب يدوي) ===
+typical   = (high + low + close) / 3
+raw_mf    = typical * volume
+up_mf     = typical > typical[1] ? raw_mf : 0.0
+dn_mf     = typical < typical[1] ? raw_mf : 0.0
+sum_up    = math.sum(up_mf, 14)
+sum_dn    = math.sum(dn_mf, 14)
+mfi_val   = 100.0 - (100.0 / (1.0 + sum_up / sum_dn))
+
+// === RSI ===
+rsi_val = ta.rsi(close, 14)
+
+// === CCI ===
+cci_val = ta.cci(typical, 20)
+
+// === OBV ===
+obv_val  = ta.obv
+obv_sma  = ta.sma(obv_val, 20)
+obv_rising = obv_val > obv_sma
+
+// === Williams %R ===
+willr_val = ta.wpr(14)
+
+// === Ichimoku ===
+tenkan   = (ta.highest(high, 9)  + ta.lowest(low, 9))  / 2
+kijun    = (ta.highest(high, 26) + ta.lowest(low, 26)) / 2
+senkou_a = (tenkan + kijun) / 2
+senkou_b = (ta.highest(high, 52) + ta.lowest(low, 52)) / 2
+ichi_bull = close > math.max(senkou_a[26], senkou_b[26])
+ichi_tk   = tenkan > kijun
+
+// === Moving Averages ===
+ema9  = ta.ema(close, 9)
+ema21 = ta.ema(close, 21)
+ma_cross_up = ta.crossover(ema9, ema21)
+
+// ═══════════════════════════════════════════════════════
+//  Price Action — قمم وقيعان + بين بار
+// ═══════════════════════════════════════════════════════
+
+// --- Fractal Swings (5 bars) ---
+fractal_high = high[5] == ta.highest(high, 11)  // center of 5+1+5 bars
+fractal_low  = low[5]  == ta.lowest(low, 11)
+
+// Store last 3 swing lows for support check
+var float[] swing_lows = array.new_float(20)
+if fractal_low
+    array.unshift(swing_lows, low[5])
+    if array.size(swing_lows) > 20
+        array.pop(swing_lows)
+
+// --- Pin Bar Detection ---
+is_pin_bull() =>
+    body      = math.abs(close - open)
+    upper_wick = high - math.max(open, close)
+    lower_wick = math.min(open, close) - low
+    total_range = high - low
+    if total_range == 0
+        false
+    else
+        lower_wick > body * pin_body_ratio and lower_wick > total_range * pin_wick_ratio
+
+is_pin_bear() =>
+    body      = math.abs(close - open)
+    upper_wick = high - math.max(open, close)
+    lower_wick = math.min(open, close) - low
+    total_range = high - low
+    if total_range == 0
+        false
+    else
+        upper_wick > body * pin_body_ratio and upper_wick > total_range * pin_wick_ratio
+
+// --- Near Support Check ---
+near_support() =>
+    result = false
+    if array.size(swing_lows) >= 2
+        min_dist = 1.0
+        sz = array.size(swing_lows)
+        idx = 0
+        while idx < sz
+            lvl = array.get(swing_lows, idx)
+            dist = math.abs(close - lvl) / lvl
+            if dist < min_dist
+                min_dist := dist
+            idx += 1
+        result := min_dist < 0.02  // within 2%
+    result
+
+// --- PA Signal ---
+pa_bull = is_pin_bull() and near_support()
+pa_bear = is_pin_bear() and not near_support()
+
+// ═══════════════════════════════════════════════════════
+//  إشارات الاستراتيجيات
+// ═══════════════════════════════════════════════════════
+
+// --- 1. BB + MFI (النجمة ⭐) ---
+signal_bb_mfi  = show_bb_mfi  and bb_touch and mfi_val < 25 and pa_bull
+
+// --- 2. BB + RSI ---
+signal_bb_rsi  = show_bb_rsi  and bb_touch and rsi_val < 40 and pa_bull
+
+// --- 3. BB + CCI ---
+signal_bb_cci  = show_bb_cci  and bb_touch and cci_val < -100 and pa_bull
+
+// --- 4. BB + OBV ---
+signal_bb_obv  = show_bb_obv  and bb_touch and obv_rising and pa_bull
+
+// --- 5. BB + WillR ---
+signal_bb_willr = show_bb_willr and bb_touch and willr_val < -80 and pa_bull
+
+// --- 6. Ichimoku ---
+signal_ichi    = show_ichi    and ichi_bull and ichi_tk and pa_bull
+
+// --- 7. MA Cross ---
+signal_ma      = show_ma_cross and ma_cross_up and pa_bull
+
+// ═══════════════════════════════════════════════════════
+//  رسم Bollinger Bands (يُعرض دائماً كمرجع)
+// ═══════════════════════════════════════════════════════
+
+p_bb_upper = plot(bb_upper, "BB Upper", color=color.new(#2962FF, 60), linewidth=1)
+p_bb_lower = plot(bb_lower, "BB Lower", color=color.new(#2962FF, 60), linewidth=1)
+p_bb_basis = plot(bb_basis, "BB MA20",  color=color.new(#2962FF, 30), linewidth=1)
+fill(p_bb_upper, p_bb_lower, color=color.new(#2962FF, 92))
+
+// ═══════════════════════════════════════════════════════
+//  رسم الإشارات على الشارت
+// ═══════════════════════════════════════════════════════
+
+// ⭐ BB+MFI — Gold
+plotshape(signal_bb_mfi, title="⭐ BB+MFI",  location=location.belowbar,
+          color=#FFD700, style=shape.triangleup, size=size.small)
+plotshape(signal_bb_mfi and show_labels, title="", location=location.belowbar,
+          color=#FFD700, style=shape.labelup, text="⭐BB+MFI", textcolor=#000000,
+          size=size.tiny)
+
+// BB+RSI — Blue
+plotshape(signal_bb_rsi, title="BB+RSI",    location=location.belowbar,
+          color=#2196F3, style=shape.triangleup, size=size.small)
+plotshape(signal_bb_rsi and show_labels, title="", location=location.belowbar,
+          color=#2196F3, style=shape.labelup, text="BB+RSI", textcolor=#FFFFFF,
+          size=size.tiny)
+
+// BB+CCI — Purple
+plotshape(signal_bb_cci, title="BB+CCI",    location=location.belowbar,
+          color=#9C27B0, style=shape.triangleup, size=size.small)
+plotshape(signal_bb_cci and show_labels, title="", location=location.belowbar,
+          color=#9C27B0, style=shape.labelup, text="BB+CCI", textcolor=#FFFFFF,
+          size=size.tiny)
+
+// BB+OBV — Cyan
+plotshape(signal_bb_obv, title="BB+OBV",    location=location.belowbar,
+          color=#00BCD4, style=shape.triangleup, size=size.small)
+plotshape(signal_bb_obv and show_labels, title="", location=location.belowbar,
+          color=#00BCD4, style=shape.labelup, text="BB+OBV", textcolor=#FFFFFF,
+          size=size.tiny)
+
+// BB+WillR — Orange
+plotshape(signal_bb_willr, title="BB+WillR", location=location.belowbar,
+          color=#FF9800, style=shape.triangleup, size=size.small)
+plotshape(signal_bb_willr and show_labels, title="", location=location.belowbar,
+          color=#FF9800, style=shape.labelup, text="BB+WillR", textcolor=#FFFFFF,
+          size=size.tiny)
+
+// Ichimoku — Green
+plotshape(signal_ichi, title="☁️ إيشيموكو", location=location.belowbar,
+          color=#4CAF50, style=shape.triangleup, size=size.small)
+plotshape(signal_ichi and show_labels, title="", location=location.belowbar,
+          color=#4CAF50, style=shape.labelup, text="☁️إيشي", textcolor=#FFFFFF,
+          size=size.tiny)
+
+// MA Cross — Teal
+plotshape(signal_ma, title="📈 MA تقاطع",   location=location.belowbar,
+          color=#009688, style=shape.triangleup, size=size.small)
+plotshape(signal_ma and show_labels, title="", location=location.belowbar,
+          color=#009688, style=shape.labelup, text="📈MA", textcolor=#FFFFFF,
+          size=size.tiny)
+
+// ═══════════════════════════════════════════════════════
+//  تنبيهات (Alerts) — اختياري
+// ═══════════════════════════════════════════════════════
+alertcondition(signal_bb_mfi,  "⭐ BB+MFI Signal",  "إشارة شراء BB+MFI")
+alertcondition(signal_bb_rsi,  "BB+RSI Signal",     "إشارة شراء BB+RSI")
+alertcondition(signal_bb_cci,  "BB+CCI Signal",     "إشارة شراء BB+CCI")
+alertcondition(signal_bb_obv,  "BB+OBV Signal",     "إشارة شراء BB+OBV")
+alertcondition(signal_bb_willr,"BB+WillR Signal",   "إشارة شراء BB+WillR")
+alertcondition(signal_ichi,    "☁️ Ichimoku Signal", "إشارة شراء إيشيموكو")
+alertcondition(signal_ma,      "MA Cross Signal",   "إشارة تقاطع المتوسطات")

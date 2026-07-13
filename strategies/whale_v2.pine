@@ -1,0 +1,89 @@
+//@version=5
+strategy('🐋 استراتيجية الحيتان | Whale Strategy v2', overlay=true,
+     initial_capital=1000, default_qty_type=strategy.percent_of_equity,
+     default_qty_value=100, commission_value=0.1, pyramiding=1)
+
+// ===== مؤشر الحيتان =====
+whale_threshold = input.float(0.03, 'حساسية الحوت', 0.01, 0.1, 0.01)
+whale_strength_pct = input.float(70, 'قوة الحوت (%)', 50, 95, 5)
+
+lowest_30 = ta.lowest(low, 30)
+at_low = low <= lowest_30
+low_change = math.abs(low - low[1]) / low * 100
+smooth_change = ta.ema(low_change, 3)
+highest_change = ta.highest(smooth_change, 30)
+whale_raw = at_low ? (smooth_change + highest_change * 2) / 3 : 0
+whale = ta.ema(whale_raw, 3)
+whale_spike = whale > whale[1] and whale[1] <= whale_threshold
+
+// ===== متوسطات على الحوت =====
+w_ma50 = ta.sma(whale, 50)
+w_ma200 = ta.sma(whale, 200)
+
+// ===== قوة الحوت (نسبة من الذروة) =====
+w_20high = ta.highest(whale, 20)
+w_pct = whale / w_20high * 100
+whale_strong = w_pct > whale_strength_pct
+
+// ===== فلاتر السعر =====
+vol_ma = ta.sma(volume, 20)
+vol_ok = volume > vol_ma
+
+atr_val = ta.atr(14)
+atr_ma = ta.sma(atr_val, 20)
+atr_ok = atr_val > atr_ma
+
+// ===== السوينجات =====
+swing_low = ta.pivotlow(low, 5, 5)
+swing_high = ta.pivothigh(high, 5, 5)
+
+get_last_swing_low() =>
+    float result = na
+    i = 1
+    while i <= 200
+        if not na(swing_low[i])
+            result := swing_low[i]
+            break
+        i += 1
+    result
+
+get_last_swing_high() =>
+    float result = na
+    i = 1
+    while i <= 200
+        if not na(swing_high[i])
+            result := swing_high[i]
+            break
+        i += 1
+    result
+
+// ===== شروط الدخول =====
+base_long = whale_spike and w_ma50 > w_ma200 and whale_strong and vol_ok and atr_ok
+base_short = whale_spike and w_ma50 < w_ma200 and whale_strong and vol_ok and atr_ok
+
+// ===== SL & TP =====
+last_swing_low_val = get_last_swing_low()
+last_swing_high_val = get_last_swing_high()
+
+long_sl = na(last_swing_low_val) ? close * 0.97 : last_swing_low_val * 0.998
+long_tp = close + atr_val * 3
+
+short_sl = na(last_swing_high_val) ? close * 1.03 : last_swing_high_val * 1.002
+short_tp = close - atr_val * 3
+
+// ===== تنفيذ =====
+if base_long and strategy.position_size == 0
+    strategy.entry('LONG', strategy.long)
+    strategy.exit('LONG TP/SL', 'LONG', limit=long_tp, stop=long_sl)
+
+if base_short and strategy.position_size == 0
+    strategy.entry('SHORT', strategy.short)
+    strategy.exit('SHORT TP/SL', 'SHORT', limit=short_tp, stop=short_sl)
+
+// ===== رسم =====
+plot(w_ma50, '🐋 MA50', color.orange, 1, display=display.none)
+plot(w_ma200, '🐋 MA200', color.blue, 1, display=display.none)
+
+plotshape(base_long, '🐋 LONG', shape.triangleup, location.belowbar, color.green, 0, '🐋', color.white, false, size.small)
+plotshape(base_short, '🐋 SHORT', shape.triangledown, location.abovebar, color.red, 0, '🐋', color.black, false, size.small)
+

@@ -1,0 +1,57 @@
+# Keys & config
+.env
+*.env
+config/*.env
+
+# Cache
+cache/
+*.pyc
+__pycache__/
+
+# Large data
+archive/
+data/*.csv
+*.pkl
+*.h5
+
+# Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Live state (generated/data files)
+live_*.json
+signals*.json
+backtest_*.json
+*_results.json
+trade_details.json
+vol_results.json
+strategy_results.json
+whale_dragon_results.json
+
+# Sessions & secrets (NEVER commit)
+*.session
+phone.*
+code.txt
+hash.txt
+status.txt
+fet_15m.csv
+
+# Charts (generated)
+charts/
+
+# Logs
+*.log
+nohup.out

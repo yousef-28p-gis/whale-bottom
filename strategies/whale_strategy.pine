@@ -1,0 +1,85 @@
+//@version=5
+strategy('🐋 استراتيجية الحيتان', overlay=true,
+     initial_capital=1000, default_qty_type=strategy.percent_of_equity,
+     default_qty_value=100, commission_value=0.1, pyramiding=1)
+
+// ===== مؤشر الحيتان =====
+length_lowest = input.int(30, 'فترة القاع', 10, 100)
+whale_threshold = input.float(0.03, 'حساسية الحوت', 0.01, 0.1, 0.01)
+
+lowest_30 = ta.lowest(low, length_lowest)
+at_low = low <= lowest_30
+low_change = math.abs(low - low[1]) / low * 100
+smooth_change = ta.ema(low_change, 3)
+highest_change = ta.highest(smooth_change, 30)
+strength = at_low ? (smooth_change + highest_change * 2) / 3 : 0
+whale = ta.ema(strength, 3)
+whale_spike = whale > whale[1] and whale[1] <= whale_threshold
+
+// ===== المتوسطات =====
+ma50 = ta.sma(close, 50)
+ma200 = ta.sma(close, 200)
+ema200_4h = request.security(syminfo.tickerid, '240', ta.ema(close, 200))
+
+// ===== ATR =====
+atr = ta.atr(14)
+
+// ===== السوينجات =====
+swing_low = ta.pivotlow(low, 5, 5)
+swing_high = ta.pivothigh(high, 5, 5)
+
+get_last_swing_low() =>
+    float result = na
+    i = 1
+    while i <= 200
+        if not na(swing_low[i])
+            result := swing_low[i]
+            break
+        i += 1
+    result
+
+get_last_swing_high() =>
+    float result = na
+    i = 1
+    while i <= 200
+        if not na(swing_high[i])
+            result := swing_high[i]
+            break
+        i += 1
+    result
+
+// ===== شروط الدخول =====
+trend_up = ma50 > ma200
+trend_down = ma50 < ma200
+price_above_ema200 = close > ema200_4h
+
+long_cond = whale_spike and trend_up and price_above_ema200
+short_cond = whale_spike and trend_down
+
+// ===== SL & TP =====
+last_swing_low_val = get_last_swing_low()
+last_swing_high_val = get_last_swing_high()
+
+long_sl = na(last_swing_low_val) ? close * 0.97 : last_swing_low_val * 0.998
+long_tp = close + atr * 3
+
+short_sl = na(last_swing_high_val) ? close * 1.03 : last_swing_high_val * 1.002
+short_tp = close - atr * 3
+
+// ===== تنفيذ =====
+if long_cond and strategy.position_size == 0
+    strategy.entry('LONG', strategy.long)
+    strategy.exit('LONG TP/SL', 'LONG', limit=long_tp, stop=long_sl)
+
+if short_cond and strategy.position_size == 0
+    strategy.entry('SHORT', strategy.short)
+    strategy.exit('SHORT TP/SL', 'SHORT', limit=short_tp, stop=short_sl)
+
+// ===== رسم المتوسطات =====
+plot(ma50, 'MA50', color.orange, 1)
+plot(ma200, 'MA200', color.blue, 1)
+plot(ema200_4h, 'EMA200 4H', color.purple, 1)
+
+// ===== إشارات =====
+plotshape(long_cond, '🐋 LONG', shape.triangleup, location.belowbar, color.green, size.small, '🐋')
+plotshape(short_cond, '🐋 SHORT', shape.triangledown, location.abovebar, color.red, size.small, '🐋')

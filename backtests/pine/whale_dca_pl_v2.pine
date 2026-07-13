@@ -1,0 +1,139 @@
+//@version=5
+// 🐋 Whale Strategy — TradingView مع DCA تقريبي
+// FET/USDT 15m | دخول 25% + تعزيز 75% عند قاع سوينج
+strategy('🐋 Whale DCA+PL', overlay=true,
+     initial_capital=1000, default_qty_type=strategy.cash,
+     default_qty_value=250, pyramiding=2, commission_value=0.1,
+     margin_long=100, process_orders_on_close=true)
+
+// ═══════════════ معاملات ═══════════════
+lookback     = input.int(200, 'Whale Lookback', 50, tooltip='200=آمن | 50=شرس')
+wma_fast     = input.int(20, 'WMA Fast', 3, tooltip='20=آمن | 3=شرس')
+wma_slow     = input.int(50, 'WMA Slow', 5, tooltip='50=آمن | 10=شرس')
+strength_min = input.float(50, 'Min Strength %', 30)
+use_vol      = input.bool(true, 'Volume Filter')
+vol_mult     = input.float(1.5, 'Vol Mult', 0.5)
+use_sma50    = input.bool(true, 'SMA50 Daily Filter')
+pl_pct       = input.float(60, 'PL % of TP', 30)
+trail_pct    = input.float(0.3, 'Trail %', 0.1)
+max_bars     = input.int(16, 'Max Bars (15m→4hr)', 4)
+monthly_lim  = input.float(7, 'Monthly Loss %', 3)
+
+// ═══════════════ مؤشر الحوت ═══════════════
+lowest_n       = ta.lowest(low, lookback)
+low_change     = math.abs(low - low[1]) / low * 100
+smooth_change  = ta.ema(low_change, 3)
+highest_change = ta.highest(smooth_change, lookback)
+strength_raw   = low <= lowest_n ? (smooth_change + highest_change * 2) / 3 : 0
+whale          = ta.ema(strength_raw, 3)
+whale_spike    = whale > whale[1] and whale[1] <= 0.02
+wma_f          = ta.wma(whale, wma_fast)
+wma_s          = ta.wma(whale, wma_slow)
+whale_str      = whale / ta.highest(whale, 50) * 100
+
+// ═══════════════ فلاتر ═══════════════
+vol_ok    = not use_vol or volume > ta.sma(volume, 20) * vol_mult
+sma50_d   = request.security(syminfo.tickerid, 'D', ta.sma(close, 50)[1], lookahead=barmerge.lookahead_off)
+sma50_ok  = not use_sma50 or close > sma50_d
+
+// ═══════════════ TP = EMA21[1] ═══════════════
+ema21_v = ta.ema(close, 21)
+tp_val  = ema21_v[1]
+
+// ═══════════════ حد خسارة شهري ═══════════════
+var float month_pnl  = 0
+var int   last_month = na
+if na(last_month) or month != last_month
+    month_pnl  := 0
+    last_month := month
+month_ok = month_pnl > -monthly_lim
+
+// ═══════════════ سوينج لوز ═══════════════
+fractal_low = low[5] == ta.lowest(low, 11)
+var float[] sw_lows = array.new_float(0)
+if fractal_low
+    array.push(sw_lows, low[5])
+    if array.size(sw_lows) > 30
+        array.shift(sw_lows)
+
+// ═══════════════ دخول أول (25%) ═══════════════
+entry_cond = whale_spike and wma_f > wma_s and whale_str > strength_min and vol_ok and sma50_ok
+
+// ═══════════════ متغيرات الصفقة ═══════════════
+var int   entry_bar  = na
+var float entry1_px  = na
+var float sl_val     = na
+var bool  pl_act     = false
+var float pl_trail   = na
+var bool  dca_done   = false
+var float dca_px     = na
+
+in_trade = strategy.position_size > 0
+
+if entry_cond and month_ok and tp_val > close and not in_trade and not na(ema21_v[1])
+    strategy.entry('E1', strategy.long, qty=250)
+    entry_bar := bar_index
+    entry1_px := close
+    pl_act    := false
+    pl_trail  := na
+    dca_done  := false
+    dca_px    := na
+    if array.size(sw_lows) > 0
+        sl_val := array.min(sw_lows) * 0.998
+    else
+        sl_val := close * 0.95
+
+// ═══════════════ DCA (75%) عند قاع سوينج جديد تحت الدخول ═══════════════
+if in_trade and not dca_done
+    new_sw_low = low[5] == ta.lowest(low, 11)
+    if new_sw_low and low[5] < entry1_px
+        strategy.entry('E2', strategy.long, qty=750)
+        dca_done := true
+        dca_px   := close
+        // تحديث SL لقاع السوينج الجديد
+        sl_val := low[5] * 0.998
+
+// ═══════════════ Profit Lock ═══════════════
+bars_in  = in_trade ? bar_index - entry_bar : 0
+avg_px   = strategy.position_avg_price
+
+if in_trade and tp_val > avg_px
+    pl_trigger = avg_px + (tp_val - avg_px) * pl_pct / 100
+    if not pl_act and high >= pl_trigger
+        pl_act   := true
+        pl_trail := high * (1 - trail_pct / 100)
+    if pl_act
+        if high > pl_trail / (1 - trail_pct / 100)
+            pl_trail := high * (1 - trail_pct / 100)
+        if pl_trail > sl_val
+            sl_val := pl_trail
+
+// ═══════════════ تحديث SL للسوينج ═══════════════
+if in_trade and array.size(sw_lows) > 0
+    nsl = array.min(sw_lows) * 0.998
+    if nsl > sl_val
+        sl_val := nsl
+
+// ═══════════════ خروج ═══════════════
+if in_trade
+    tp_hit  = high >= tp_val
+    sl_up   = sl_val > avg_px
+    sl_hit  = sl_up ? high >= sl_val : low <= sl_val
+    
+    if tp_hit
+        strategy.close_all(comment='TP')
+    else if sl_hit
+        strategy.close_all(comment=pl_act ? 'PL' : 'SL')
+    else if bars_in >= max_bars
+        strategy.close_all(comment='TIME')
+
+// ═══════════════ تتبع شهري ═══════════════
+if not na(entry_bar[1]) and not in_trade
+    trade_pnl = (close - avg_px[1]) / avg_px[1] * 100 - 0.2
+    month_pnl += trade_pnl
+
+// ═══════════════ رسم ═══════════════
+plotshape(entry_cond and month_ok and tp_val > close, 'Buy', shape.triangleup, location.belowbar, color.rgb(0,180,255), 0, '🐋', color.white, false, size.small)
+plotshape(dca_done and dca_done[1] == false, 'DCA', shape.diamond, location.belowbar, color.rgb(255,165,0), 0, '⬇', color.white, false, size.small)
+plot(ema21_v, 'EMA21', color.rgb(255,150,0), 1)
+hline(use_sma50 ? sma50_d : na, 'SMA50 D', color.rgb(255,255,255, 40))
