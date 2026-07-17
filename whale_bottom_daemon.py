@@ -298,11 +298,17 @@ def main():
     state = load_state()
     exchange = get_exchange()
     markets = exchange.load_markets()
+    
+    # 🕌 تصفية شرعية — حلال + حلال2 فقط
+    with open('config/shariah_coins.json') as f:
+        shariah = json.load(f)
+    TRADE_COINS = set(shariah['halal'] + shariah['halal2'])
+    
     coins = [s.replace('/USDT', '') for s in markets if s.endswith('/USDT') and markets[s]['active']]
-    coins = [c for c in coins if c not in STABLES]
+    coins = [c for c in coins if c not in STABLES and c in TRADE_COINS]
     
     print(f'🐋🔥 حوت القاع — بدء التشغيل')
-    print(f'📊 {len(coins)} عملة | مسح كل {SCAN_INTERVAL//60} دقيقة')
+    print(f'🕌 {len(coins)} عملة (حلال + حلال2) | مسح كل {SCAN_INTERVAL//60} دقيقة')
     print(f'⚙️ TP=+{TP}% SL=-{SL}% PL={PL}% تريل={TRAIL}% مدة={MAX_H}h | صفقتين×{POS_PCT}%')
     print(f'🐋 حوت≥{WHALE_MIN} | 📉 RSI<25')
     print('=' * 50)

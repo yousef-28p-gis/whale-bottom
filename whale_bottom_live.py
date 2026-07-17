@@ -215,10 +215,15 @@ def main():
     state = load_state()
     exchange = get_exchange()
     
+    # 🕌 تصفية شرعية — حلال + حلال2 فقط
+    with open('config/shariah_coins.json') as f:
+        shariah = json.load(f)
+    TRADE_COINS = set(shariah['halal'] + shariah['halal2'])
+    
     # Get all USDT pairs
     markets = exchange.load_markets()
     coins = [s.replace('/USDT', '') for s in markets if s.endswith('/USDT') and markets[s]['active']]
-    coins = [c for c in coins if c not in STABLES]
+    coins = [c for c in coins if c not in STABLES and c in TRADE_COINS]
     
     new_signals = []
     scanned = 0
