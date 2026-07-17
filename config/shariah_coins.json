@@ -386,7 +386,8 @@
     "stock_tokens": 35,
     "unknown": 1,
     "total": 459,
-    "tested_suspicious": 88
+    "tested_suspicious": 88,
+    "halal2": 88
   },
   "rules": {
     "haram": [
@@ -415,7 +416,7 @@
     "CryptoHalal.cc"
   ],
   "_note": "هذا التصنيف اجتهادي. استشر عالم شرعي متخصص للفتوى النهائية.",
-  "tested_suspicious": [
+  "halal2": [
     "1000SATS",
     "1INCH",
     "AIXBT",
