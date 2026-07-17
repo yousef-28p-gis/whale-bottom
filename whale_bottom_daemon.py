@@ -297,15 +297,11 @@ def report_to_buf(new_signals, closed_now, state, scanned, buf):
 def main():
     state = load_state()
     exchange = get_exchange()
-    markets = exchange.load_markets()
     
-    # 🕌 تصفية شرعية — حلال + حلال2 فقط
+    # 🕌 تحميل العملات المسموحة مباشرة — بدون تحميل كل الأسواق
     with open('config/shariah_coins.json') as f:
         shariah = json.load(f)
-    TRADE_COINS = set(shariah['halal'] + shariah['halal2'])
-    
-    coins = [s.replace('/USDT', '') for s in markets if s.endswith('/USDT') and markets[s]['active']]
-    coins = [c for c in coins if c not in STABLES and c in TRADE_COINS]
+    coins = [c for c in shariah['halal'] + shariah['halal2'] if c not in STABLES]
     
     print(f'🐋🔥 حوت القاع — بدء التشغيل')
     print(f'🕌 {len(coins)} عملة (حلال + حلال2) | مسح كل {SCAN_INTERVAL//60} دقيقة')

@@ -1,5 +1,32 @@
 {
-  "active": [],
+  "active": [
+    {
+      "symbol": "WLD",
+      "entry_price": 0.3747,
+      "tp_price": 0.3878145,
+      "sl_price": 0.3690795,
+      "whale_val": 0.5489,
+      "rsi": 23.3,
+      "pump24": -6.21,
+      "signal_ts": "2026-07-17 13:00:00",
+      "entered_at": "2026-07-17T13:14:24.183055+00:00",
+      "pl_triggered": false,
+      "peak": 0.3747
+    },
+    {
+      "symbol": "PIXEL",
+      "entry_price": 0.00447,
+      "tp_price": 0.00462645,
+      "sl_price": 0.00440295,
+      "whale_val": 0.8725,
+      "rsi": 21.4,
+      "pump24": -3.87,
+      "signal_ts": "2026-07-17 13:00:00",
+      "entered_at": "2026-07-17T13:14:43.933705+00:00",
+      "pl_triggered": false,
+      "peak": 0.00447
+    }
+  ],
   "closed": [
     {
       "symbol": "AEVO",
