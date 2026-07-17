@@ -13,7 +13,7 @@ PENDING_FILE = '/data/trading28/live_pending.json'
 STATE_FILE = '/data/trading28/live_confirmed.json'
 LIVE_CACHE = '/data/trading28/cache/live'
 
-TP = 2.5; SL = 2.0; PL = 40; TRAIL = 0.10; MAX_H = 2; STR = 50; WHALE_MIN = 0.35
+TP = 3.5; SL = 1.5; PL = 30; TRAIL = 0.10; MAX_H = 6; STR = 50; WHALE_MIN = 0.40
 COMMISSION = 0.20  # 0.1% buy + 0.1% sell (Binance spot)
 
 STABLES = {
@@ -53,6 +53,15 @@ def whale_indicator(df):
     return df
 
 
+_EXCHANGE = None
+
+def _get_exchange():
+    global _EXCHANGE
+    if _EXCHANGE is None:
+        _EXCHANGE = ccxt.binance({'timeout': 15000})
+    return _EXCHANGE
+
+
 def get_live_ohlcv(symbol):
     os.makedirs(LIVE_CACHE, exist_ok=True)
     cache_path = f'{LIVE_CACHE}/{symbol}.json'
@@ -68,7 +77,7 @@ def get_live_ohlcv(symbol):
                 last_ts_ms = int(df['ts'].iloc[-1].timestamp() * 1000) + 1
         except: pass
 
-    exchange = ccxt.binance()
+    exchange = _get_exchange()
     if df is None:
         since_ms = int((datetime.now(timezone.utc) - timedelta(days=5)).timestamp() * 1000)
     else:
@@ -99,27 +108,43 @@ def check_signal(signal):
     df = df.iloc[:-1]  # drop incomplete candle
     df_w = whale_indicator(df)
     dt_naive = dt.replace(tzinfo=None)
-    df_w['td'] = abs((df_w['ts'] - dt_naive).dt.total_seconds())
-    nearest = df_w['td'].idxmin()
-    forward = df_w.iloc[nearest:].reset_index(drop=True)
+    # ✅ Fix: first candle AT or AFTER signal (not nearest)
+    future = df_w[df_w['ts'] >= dt_naive]
+    if len(future) < 10: return None
+    forward = future.reset_index(drop=True)
     for j, row in forward.iterrows():
         if j * 0.25 > 24: break
         if row['entry']:
             whale_val = float(row['whale'])
             if whale_val >= WHALE_MIN:
+                # ═══ NEW FILTERS ═══
+                ep = float(row['close'])
+                # Filter 1: single candle whale
+                if j + 1 < len(forward):
+                    whale_next = float(forward.iloc[j+1]['whale'])
+                    if whale_next >= 0.35:
+                        return None  # skip — 2+ candles
+                # Filter 2: Pump24 negative (price dropped before signal)
+                idx_in_df = future.index[j]
+                ps = max(0, idx_in_df - 96)
+                pb = float(df_w.iloc[ps]['close'])
+                pump24 = (ep - pb) / pb * 100 if pb != 0 else 0
+                if pump24 >= 0:
+                    return None  # skip — price didn't drop
                 return {
                     'symbol': sym, 'confirmed_at': datetime.now(timezone.utc).isoformat(),
                     'whale_val': round(whale_val, 4), 'whale_str': round(float(row['str']), 1),
-                    'entry_price': round(float(row['close']), 8),
-                    'tp_price': round(float(row['close']) * (1+TP/100), 8),
-                    'sl_price': round(float(row['close']) * (1-SL/100), 8),
+                    'entry_price': round(ep, 8),
+                    'tp_price': round(ep * (1+TP/100), 8),
+                    'sl_price': round(ep * (1-SL/100), 8),
+                    'pump24': round(pump24, 2),
                 }
     return None
 
 
 def get_live_price(symbol):
     try:
-        t = ccxt.binance().fetch_ticker(f'{symbol}/USDT')
+        t = _get_exchange().fetch_ticker(f'{symbol}/USDT')
         return t['last']
     except:
         return None
@@ -226,6 +251,10 @@ def main():
     state = load_state()
     confirmed_now = []
 
+    # Track active symbols to prevent duplicate positions
+    active_symbols = {p['symbol'] for p in state['active_positions']}
+    MAX_POSITIONS = 1  # صفقة وحدة 100%
+    
     for sig in pending[:]:
         result = check_signal(sig)
         if result:
@@ -233,13 +262,26 @@ def main():
             result['signal_dt'] = sig['dt']
             result['volume_usdt'] = sig.get('volume_usdt', 0)
             cid = str(sig['msg_id'])
-            if cid not in state['confirmed']:
-                result['entered_at'] = datetime.now(timezone.utc).isoformat()
-                result['pl_triggered'] = False
-                result['peak'] = result['entry_price']
-                state['confirmed'][cid] = result
-                state['active_positions'].append(result)
-                confirmed_now.append(result)
+            sym = result['symbol']
+
+            # Skip duplicate: same msg_id OR same symbol already active OR max positions
+            if cid in state['confirmed']:
+                pending.remove(sig)
+                continue
+            if sym in active_symbols:
+                pending.remove(sig)
+                continue
+            if len(state['active_positions']) >= MAX_POSITIONS:
+                pending.remove(sig)  # skip — position slot full
+                continue
+
+            result['entered_at'] = datetime.now(timezone.utc).isoformat()
+            result['pl_triggered'] = False
+            result['peak'] = result['entry_price']
+            state['confirmed'][cid] = result
+            state['active_positions'].append(result)
+            active_symbols.add(sym)
+            confirmed_now.append(result)
             pending.remove(sig)
 
     # ── Check active positions ──

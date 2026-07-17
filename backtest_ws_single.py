@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Backtest Whale Sniper signals vs Hunter Whale strategy. LONG only, non-stable, vol >= 200K."""
+import json, os, numpy as np, pandas as pd
+from datetime import datetime, timezone
+from collections import defaultdict
+
+CACHE = '/data/trading28/cache/ohlcv'
+SIGNALS_FILE = '/data/trading28/signals_ws_single.json'
+
+TP = 2.5; SL = 2.0; PL = 40; TRAIL = 0.10; MAX_H = 2; STR = 50
+COMMISSION = 0.20
+
+STABLES = {
+    'USDT','USDC','BUSD','DAI','TUSD','USDE','XUSD',
+    'BFUSD','FDUSD','USDD','FRAX','LUSD','PYUSD',
+    'USDJ','RLUSD','XAUT','USD1','EUR'
+}
+
+def load_cached(sym, mon):
+    fpath = f'{CACHE}/{sym}_{mon}.json'
+    if not os.path.exists(fpath):
+        return None
+    try:
+        with open(fpath) as f:
+            data = json.load(f)
+        df = pd.DataFrame(data)
+        df['ts'] = pd.to_datetime(df['ts'], unit='ms')
+        df = df.rename(columns={'o':'open','h':'high','l':'low','c':'close','v':'volume'})
+        return df.sort_values('ts').reset_index(drop=True)
+    except:
+        return None
+
+def whale_indicator(df):
+    df = df.copy()
+    LB = 30
+    df['lo'] = df['low'].rolling(LB).min()
+    df['lc'] = abs(df['low'] - df['low'].shift(1)) / df['low'] * 100
+    df['sm'] = df['lc'].ewm(span=3, adjust=False).mean()
+    df['hi'] = df['sm'].rolling(LB).max()
+    df['raw'] = np.where(df['low'] <= df['lo'], (df['sm'] + df['hi'] * 2) / 3, 0)
+    df['whale'] = df['raw'].ewm(span=3, adjust=False).mean().fillna(0)
+    df['spike'] = (df['whale'] > df['whale'].shift(1)) & (df['whale'].shift(1) <= 0.03)
+    df['wf'] = df['whale'].rolling(2).mean()
+    df['ws'] = df['whale'].rolling(5).mean()
+    df['wp'] = df['whale'].rolling(50).max()
+    df['str'] = (df['whale'] / df['wp'].replace(0, np.nan) * 100).fillna(0)
+    df['vma'] = df['volume'].rolling(20).mean()
+    df['entry'] = (df['spike'] & (df['wf'] > df['ws']) &
+                   (df['str'] > STR) & (df['volume'] > df['vma'] * 1.0))
+    return df
+
+def simulate_position(df, entry_idx, entry_price):
+    tp_price = entry_price * (1 + TP/100)
+    sl_price = entry_price * (1 - SL/100)
+    pl_price = entry_price * (1 + PL/100)
+    
+    pl_triggered = False
+    peak = entry_price
+    trail_price = None
+    
+    max_idx = min(entry_idx + 8, len(df))  # 8 candles = 2h
+    
+    for i in range(entry_idx + 1, max_idx):
+        high = df.iloc[i]['high']
+        low = df.iloc[i]['low']
+        close = df.iloc[i]['close']
+        
+        if high >= tp_price:
+            return (TP, '🎯 هدف', f'+{TP}%')
+        
+        if low <= sl_price:
+            return (-SL, '🛑 ستوب', f'-{SL}%')
+        
+        if pl_triggered:
+            if high > peak:
+                peak = high
+                trail_price = peak * (1 - TRAIL/100)
+            if trail_price and low <= trail_price:
+                trail_pnl = round((trail_price - entry_price) / entry_price * 100, 4)
+                return (trail_pnl, '🐌 تريل', 'ارتد')
+        else:
+            if high >= pl_price:
+                pl_triggered = True
+                peak = high
+                trail_price = peak * (1 - TRAIL/100)
+    
+    last_close = df.iloc[max_idx - 1]['close']
+    pnl = round((last_close - entry_price) / entry_price * 100, 4)
+    return (pnl, '⏰ وقت', f'{MAX_H}h')
+
+# ── Main ──
+with open(SIGNALS_FILE) as f:
+    all_signals = json.load(f)
+
+# Filter: LONG only, non-stable, volume >= 200K
+MIN_VOL = 200_000
+filtered = []
+for s in all_signals:
+    if s['direction'] != 'LONG':
+        continue
+    if s['symbol'] in STABLES:
+        continue
+    if s['volume_usdt'] < MIN_VOL:
+        continue
+    filtered.append(s)
+
+print(f'Total signals: {len(all_signals)}')
+print(f'LONG, non-stable, vol>=200K: {len(filtered)}')
+
+results = {
+    'total_filtered': len(filtered),
+    'cache_miss': 0,
+    'whale_rejected': 0,
+    'trades': [],
+    'no_data': [],
+}
+
+for i, s in enumerate(filtered):
+    dt = datetime.fromisoformat(s['dt'])
+    mon = dt.strftime('%Y-%m')
+    sym = s['symbol']
+    
+    df = load_cached(sym, mon)
+    if df is None:
+        results['cache_miss'] += 1
+        results['no_data'].append({'symbol': sym, 'dt': s['dt'], 'reason': 'no_cache'})
+        continue
+    
+    df_w = whale_indicator(df)
+    signal_ts = pd.Timestamp(dt).tz_convert('UTC').tz_localize(None)
+    prior = df_w[df_w['ts'] <= signal_ts]
+    
+    if len(prior) < 50:
+        results['no_data'].append({'symbol': sym, 'dt': s['dt'], 'reason': 'insufficient_data'})
+        continue
+    
+    last_idx = prior.index[-1]
+    last_row = df_w.iloc[last_idx]
+    
+    if not last_row['entry']:
+        results['whale_rejected'] += 1
+        continue
+    
+    entry_price = last_row['close']
+    whale_val = last_row['whale']
+    whale_str = last_row['str']
+    
+    exit_pnl, exit_status, exit_detail = simulate_position(df_w, last_idx, entry_price)
+    net_pnl = round(exit_pnl - COMMISSION, 4)
+    
+    results['trades'].append({
+        'symbol': sym,
+        'dt': s['dt'],
+        'entry_price': round(entry_price, 8),
+        'whale_val': round(float(whale_val), 4),
+        'whale_str': round(float(whale_str), 1),
+        'exit_pnl': exit_pnl,
+        'exit_net': net_pnl,
+        'exit_status': exit_status,
+        'exit_detail': exit_detail,
+        'volume_usdt': s['volume_usdt']
+    })
+    
+    if (i + 1) % 50 == 0:
+        print(f'  {i+1}/{len(filtered)}... {len(results["trades"])} trades')
+
+# ── Summary ──
+trades = results['trades']
+print(f'\n{"="*60}')
+print(f'📊 نتائج باك تيست — Whale Sniper (messages8)')
+print(f'{"="*60}')
+print(f'إجمالي الإشارات: {len(all_signals)}')
+print(f'لونغ فقط (فلتر): {len(filtered)}')
+print(f'بدون كاش/بيانات: {results["cache_miss"]}')
+print(f'مرفوضة من الحوت: {results["whale_rejected"]}')
+print(f'صفقات منفذة: {len(trades)}')
+print()
+
+if trades:
+    wins = sum(1 for t in trades if t['exit_net'] > 0)
+    losses = sum(1 for t in trades if t['exit_net'] <= 0)
+    wr = round(wins / len(trades) * 100, 1)
+    total_net = sum(t['exit_net'] for t in trades)
+    avg_net = round(total_net / len(trades), 2)
+    
+    status_count = defaultdict(int)
+    status_pnl = defaultdict(float)
+    for t in trades:
+        status_count[t['exit_status']] += 1
+        status_pnl[t['exit_status']] += t['exit_net']
+    
+    print(f'📈 ملخص:')
+    print(f'  رابحة: {wins} 🟢 | خاسرة: {losses} 🔴 | WR: {wr}%')
+    print(f'  صافي الإجمالي: {total_net:+.2f}%')
+    print(f'  متوسط الصفقة: {avg_net:+.2f}%')
+    print()
+    print(f'📋 تفصيل الإغلاقات:')
+    for status, count in sorted(status_count.items(), key=lambda x: -x[1]):
+        avg = round(status_pnl[status] / count, 2)
+        print(f'  {status}: {count} صفقة | مجموع: {status_pnl[status]:+.2f}% | متوسط: {avg:+.2f}%')
+    
+    print(f'\n🔴 أسوأ 5 صفقات:')
+    worst = sorted(trades, key=lambda t: t['exit_net'])[:5]
+    for t in worst:
+        print(f'  {t["symbol"]:<10} | {t["exit_net"]:+.2f}% | {t["exit_status"]} | {t["dt"][:10]}')
+    
+    print(f'\n🟢 أفضل 5 صفقات:')
+    best = sorted(trades, key=lambda t: -t['exit_net'])[:5]
+    for t in best:
+        print(f'  {t["symbol"]:<10} | {t["exit_net"]:+.2f}% | {t["exit_status"]} | {t["dt"][:10]}')
+
+out_path = '/data/trading28/backtest_ws_single.json'
+with open(out_path, 'w') as f:
+    json.dump(results, f, default=str, indent=2)
+print(f'\n✅ النتائج محفوظة: {out_path}')
