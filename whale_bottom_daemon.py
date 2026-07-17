@@ -84,6 +84,12 @@ def get_live_ohlcv(symbol):
             df = pd.concat([df, new_df]).drop_duplicates(subset=['ts']).sort_values('ts').reset_index(drop=True)
         else:
             df = new_df
+        
+        # 🧹 نحتفظ بآخر 500 شمعة فقط
+        MAX_CANDLES = 500
+        if len(df) > MAX_CANDLES:
+            df = df.iloc[-MAX_CANDLES:].reset_index(drop=True)
+        
         cache_data = [{'ts':int(r['ts'].timestamp()*1000), 'o':r['open'], 'h':r['high'],
                         'l':r['low'], 'c':r['close'], 'v':r['volume']} for _, r in df.iterrows()]
         with open(cache_path, 'w') as f:
