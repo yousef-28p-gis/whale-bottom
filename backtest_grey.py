@@ -4,7 +4,7 @@ import json, os, numpy as np, pandas as pd
 from collections import defaultdict
 from datetime import timedelta
 
-CACHE_DIR = '/data/trading28/cache/5year_halal'
+CACHE_DIR = '/data/trading28/data/5year_halal'
 TP=3.5; SL=1.5; PL=30; TRAIL=0.10; MH=6; STR=50; WHALE_MIN=0.50; COMM=0.20
 BLOCK_HOURS = {1,3,6,12,0,4}
 

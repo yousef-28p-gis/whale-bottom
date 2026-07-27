@@ -4,7 +4,7 @@ import ccxt, json, os, time
 
 OLD_GREY = ['ACE','AIXBT','ALT','APE','ARPA','ASTER','AUDIO','AXL','BAND','BB','BEAMX','BICO','BLUR','BNT','C98','CELO','CELR','CETUS','CFG','CFX','CGPT','CHZ','COTI','CTK','CTSI','CVX','CYBER','DCR','DEXE','DUSK','EGLD','ENS','ETHFI','FLOW','GLMR','GMT','GNO','GTC','HEI','HFT','ICP','ID','JST','KAVA','KNC','KSM','MASK','MAV','MET','METIS','MINA','MOVR','MTL','NEWT','OGN','ONDO','ONE','ONT','OP','ORDI','OSMO','PAXG','PEOPLE','POL','POLYX','PORTAL','PYR','QI','QNT','RAD','RARE','REZ','RIF','RLC','RONIN','ROSE','RSR','RUNE','RVN','SEI','SFP','SKL','SPELL','SUPER','SYN','T','TNSR','TWT','UMA','VANA','VANRY','VIC','VIRTUAL','WAXP','WOO','XAI','XAUT','XVS','YFI','ZAMA','ZEN','ZK','ZKP','ZRX']
 
-CACHE_DIR = '/data/trading28/cache/5year_halal'
+CACHE_DIR = '/data/trading28/data/5year_halal'
 START = '2021-07-01T00:00:00Z'
 
 # Link existing

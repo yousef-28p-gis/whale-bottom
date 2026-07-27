@@ -159,6 +159,14 @@ def check_entry(symbol, df_w):
         if pump24 >= 0:
             continue
         
+        # 🔥 فلتر 3: شمعة التأكيد خضراء (close > open)
+        if i + 1 >= len(df_w):
+            continue
+        next_open = float(df_w.iloc[i + 1]['open'])
+        next_close = float(df_w.iloc[i + 1]['close'])
+        if next_close <= next_open:
+            continue
+        
         return {
             'symbol': symbol,
             'entry_price': round(ep, 8),

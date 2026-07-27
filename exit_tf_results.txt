@@ -1,0 +1,57 @@
+⏳ بدء 15m...
+  ADA: 10 trades
+  ETH: 10 trades
+  SOL: 10 trades
+  DOGE: 10 trades
+  AVAX: 10 trades
+  LINK: 10 trades
+  DOT: 10 trades
+  ATOM: 10 trades
+  GRT: 10 trades
+  SAND: 10 trades
+✅ 15m: 151ت | WR 70.2% | مجموع +87.3%
+⏳ بدء 1h...
+  ADA: 10 trades
+  ETH: 10 trades
+  SOL: 10 trades
+  DOGE: 10 trades
+  AVAX: 10 trades
+  LINK: 10 trades
+  DOT: 10 trades
+  ATOM: 10 trades
+  GRT: 10 trades
+  SAND: 10 trades
+✅ 1h: 151ت | WR 69.5% | مجموع +114.8%
+⏳ بدء 4h...
+  ADA: 10 trades
+  ETH: 10 trades
+  SOL: 10 trades
+  DOGE: 10 trades
+  AVAX: 10 trades
+  LINK: 10 trades
+  DOT: 10 trades
+  ATOM: 10 trades
+  GRT: 10 trades
+  SAND: 10 trades
+✅ 4h: 151ت | WR 54.3% | مجموع +23.9%
+
+============================================================
+📊 مقارنة الخروج حسب الإطار الزمني
+============================================================
+
+⏱️  خروج 15m:
+   صفقات: 151 | 🟢 106 | WR 70.2%
+   مجموع: +87.3% | متوسط: +0.578%
+   مخارج: {'SL': 35, 'TRAIL': 92, 'TIME': 20, 'TP': 4}
+
+⏱️  خروج 1h:
+   صفقات: 151 | 🟢 105 | WR 69.5%
+   مجموع: +114.8% | متوسط: +0.760%
+   مخارج: {'SL': 34, 'TIME': 31, 'TP': 16, 'TRAIL': 70}
+
+⏱️  خروج 4h:
+   صفقات: 151 | 🟢 82 | WR 54.3%
+   مجموع: +23.9% | متوسط: +0.158%
+   مخارج: {'SL': 23, 'TIME': 118, 'TP': 10}
+
+✅ تم

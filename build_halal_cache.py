@@ -11,7 +11,7 @@ with open('/data/trading28/config/shariah_coins.json') as f:
 HALAL = data['halal']
 
 OLD_CACHE = '/data/trading28/cache/5year'
-NEW_CACHE = '/data/trading28/cache/5year_halal'
+NEW_CACHE = '/data/trading28/data/5year_halal'
 START = '2021-07-01T00:00:00Z'
 
 os.makedirs(NEW_CACHE, exist_ok=True)

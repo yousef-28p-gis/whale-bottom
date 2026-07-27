@@ -8,7 +8,7 @@ NEW = ['ACX','BMT','EDEN','EPIC','ERA','FORM','GPS','GRAM','HAEDAL','HOME','HUMA
 
 TO_DOWNLOAD = MEME + NEW
 
-CACHE_DIR = '/data/trading28/cache/5year_halal'
+CACHE_DIR = '/data/trading28/data/5year_halal'
 START = '2021-07-01T00:00:00Z'
 
 # Link existing

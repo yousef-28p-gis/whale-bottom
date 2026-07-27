@@ -54,4 +54,7 @@ charts/
 
 # Logs
 *.log
-nohup.out
+nohup.outdata/
+rclone
+__pycache__/
+data/

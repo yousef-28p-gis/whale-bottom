@@ -4,7 +4,7 @@ import json, os, numpy as np, pandas as pd
 from collections import defaultdict
 from datetime import timedelta
 
-CACHE_DIR = '/data/trading28/cache/5year_halal'
+CACHE_DIR = '/data/trading28/data/5year_halal'
 TP=3.5; SL=1.5; PL=30; TRAIL=0.10; MH=6; STR=50; WHALE_MIN=0.50; COMM=0.20
 BLOCK_HOURS = {1,3,6,12,0,4}
 
@@ -68,6 +68,10 @@ for fname in coin_files:
         if row['ts'].hour in BLOCK_HOURS: continue
         ps=max(0,i-96); pb=float(df.iloc[ps]['close']); ep=float(row['close'])
         if (ep-pb)/pb*100 >= 0: continue
+        
+        # فلتر 3: تأكيد شمعة خضراء
+        if i+1 >= len(df): continue
+        if float(df.iloc[i+1]['close']) <= float(df.iloc[i+1]['open']): continue
         
         tp_p=ep*(1+TP/100); sl_p=ep*(1-SL/100)
         pl_p=ep+(tp_p-ep)*(PL/100)
