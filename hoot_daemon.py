@@ -95,14 +95,24 @@ def fetch_and_cache(symbol):
     return df['close'].values, df['high'].values, df['low'].values
 
 # ═══ Pattern Detection ═══
+# Fibonacci levels with tolerance
+FIB_RETRACE = [0.382, 0.50, 0.618, 0.786]
+FIB_EXTEND  = [1.0, 1.272, 1.382, 1.618]
+FIB_TOL = 0.05
+
+def near_fib(actual, fib_levels, tol=FIB_TOL):
+    return any(abs(actual - f) <= tol for f in fib_levels)
+
 def find_zpatterns(pv):
     pats = []
     for i in range(len(pv)-3):
         p0,p1,p2,p3 = pv[i],pv[i+1],pv[i+2],pv[i+3]
         if p0[2]=='H' and p1[2]=='L' and p2[2]=='H' and p3[2]=='L':
             A=p0[1]-p1[1]; B=p2[1]-p1[1]; C=p2[1]-p3[1]
-            if A>0 and B>0 and C>0 and 0.38<=B/A<=0.79 and p3[1]<p1[1]:
-                pats.append((p0,p1,p2,p3))
+            if A>0 and B>0 and C>0 and p3[1]<p1[1]:
+                ret_B = B/A; ext_C = C/A
+                if near_fib(ret_B, FIB_RETRACE) and near_fib(ext_C, FIB_EXTEND):
+                    pats.append((p0,p1,p2,p3))
     return pats
 
 def check_entry(close, high, low, coin):

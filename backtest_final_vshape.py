@@ -12,14 +12,26 @@ DEPTH = 10; DEV = 1.0; D = DEPTH // 2; CONFIRM = D
 MAX_POS = 2; TIME_BARS = 120
 TP_PCT = 1.0; HALF_TP_PCT = 0.5; SL_PCT = -0.5; DIST_FILTER = 0.5
 
+# Fibonacci levels with tolerance
+FIB_RETRACE = [0.382, 0.50, 0.618, 0.786]   # Wave B of A
+FIB_EXTEND  = [1.0, 1.272, 1.382, 1.618]     # Wave C of A
+FIB_TOL = 0.05  # ±5% tolerance
+
+def near_fib(actual, fib_levels, tol=FIB_TOL):
+    """Check if actual ratio is close to any Fibonacci level"""
+    return any(abs(actual - f) <= tol for f in fib_levels)
+
 def find_zpatterns(pv):
     pats = []
     for i in range(len(pv)-3):
         p0,p1,p2,p3 = pv[i],pv[i+1],pv[i+2],pv[i+3]
         if p0[2]=='H' and p1[2]=='L' and p2[2]=='H' and p3[2]=='L':
             A=p0[1]-p1[1]; B=p2[1]-p1[1]; C=p2[1]-p3[1]
-            if A>0 and B>0 and C>0 and 0.38<=B/A<=0.79 and p3[1]<p1[1]:
-                pats.append((p0,p1,p2,p3))
+            if A>0 and B>0 and C>0 and p3[1]<p1[1]:
+                ret_B = B/A  # Wave B retracement
+                ext_C = C/A  # Wave C extension
+                if near_fib(ret_B, FIB_RETRACE) and near_fib(ext_C, FIB_EXTEND):
+                    pats.append((p0,p1,p2,p3,ret_B,ext_C))
     return pats
 
 def simulate_one_coin(close, high, low, coin_name):
@@ -29,7 +41,7 @@ def simulate_one_coin(close, high, low, coin_name):
     patterns = find_zpatterns(pivots)
     
     trades = []
-    for H1, L1, H2, L2 in patterns:
+    for H1, L1, H2, L2, ret_B, ext_C in patterns:
         entry_bar = L2[0] + CONFIRM
         if entry_bar >= n: continue
         entry_price = close[entry_bar]
