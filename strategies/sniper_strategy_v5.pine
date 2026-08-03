@@ -1,0 +1,118 @@
+//@version=5
+strategy(title='Sniper Strategy Improved', shorttitle='Sniper v5', overlay=true,
+     pyramiding=0, initial_capital=1000, currency=currency.USD,
+     commission_value=0.2, commission_type=strategy.commission.percent)
+
+// ═══════════════ PARAMETERS ═══════════════
+
+// --- Signal Timeframe ---
+signal_tf = input.timeframe('60', title='Signal Timeframe', options=['15', '30', '60', '120', '240', 'D'])
+
+// --- EMA Trend Filters ---
+ema_fast_len = input.int(13, title='EMA Fast', minval=1)
+ema_slow_len = input.int(21, title='EMA Slow', minval=1)
+
+// --- Hull MA ---
+show_hma = input.bool(false, title='Show Hull MA')
+hma_len = input.int(13, title='Hull MA Length', minval=1)
+
+// --- Supertrend ---
+show_st = input.bool(true, title='Show Supertrend')
+st_factor = input.float(2.0, title='ST Factor', minval=0.5, maxval=10, step=0.5)
+st_period = input.int(7, title='ST Period', minval=1, maxval=100)
+
+// --- Filters ---
+use_ema200_filter = input.bool(true, title='EMA 200 Filter (trend)', group='Filters')
+ema200_len = input.int(200, title='EMA 200 Length', minval=1, group='Filters')
+use_vol_filter = input.bool(true, title='Volume Filter', group='Filters')
+vol_ma_len = input.int(20, title='Volume MA Length', minval=1, group='Filters')
+use_rsi_filter = input.bool(true, title='RSI Filter', group='Filters')
+rsi_len = input.int(14, title='RSI Length', minval=1, group='Filters')
+rsi_ob = input.int(70, title='RSI Overbought', minval=50, maxval=90, group='Filters')
+rsi_os = input.int(30, title='RSI Oversold', minval=10, maxval=50, group='Filters')
+
+// ═══════════════ CALCULATIONS ═══════════════
+
+// --- EMAs ---
+ema_fast = ta.ema(close, ema_fast_len)
+ema_slow = ta.ema(close, ema_slow_len)
+ema200 = ta.ema(close, ema200_len)
+
+// --- EMA Colors ---
+fast_dir = ta.rising(ema_fast, 2) ? 1 : ta.falling(ema_fast, 2) ? -1 : 0
+slow_dir = ta.rising(ema_slow, 2) ? 1 : ta.falling(ema_slow, 2) ? -1 : 0
+
+// --- Hull MA ---
+hma(src, len) =>
+    math.round(math.sqrt(len))
+    wma(2 * ta.wma(src, len / 2) - ta.wma(src, len), math.round(math.sqrt(len)))
+hull = hma(close, hma_len)
+
+// --- Supertrend ---
+[st_trend, st_dn] = ta.supertrend(st_factor, st_period)
+st_up = st_trend == 1
+st_dn = st_trend == -1
+
+// --- Higher TF Signal ---
+tf_open = request.security(syminfo.tickerid, signal_tf, open, lookahead=barmerge.lookahead_off)
+tf_close = request.security(syminfo.tickerid, signal_tf, close, lookahead=barmerge.lookahead_off)
+
+htf_bullish = tf_close > tf_open
+htf_bearish = tf_close < tf_open
+htf_cross_up = ta.crossover(tf_close, tf_open)
+htf_cross_down = ta.crossunder(tf_close, tf_open)
+
+// --- Filters ---
+ema200_bull = close > ema200
+ema200_bear = close < ema200
+vol_ok = volume > ta.sma(volume, vol_ma_len)
+rsi_val = ta.rsi(close, rsi_len)
+rsi_bull = rsi_val < rsi_ob
+rsi_bear = rsi_val > rsi_os
+
+// --- Composite Signals ---
+long_signal = htf_cross_up and htf_bullish and ema_fast > ema_slow and fast_dir == 1 and st_up
+short_signal = htf_cross_down and htf_bearish and ema_fast < ema_slow and fast_dir == -1 and st_dn
+
+// --- Apply Filters ---
+long_filtered = long_signal and (not use_ema200_filter or ema200_bull) and (not use_vol_filter or vol_ok) and (not use_rsi_filter or rsi_bull)
+short_filtered = short_signal and (not use_ema200_filter or ema200_bear) and (not use_vol_filter or vol_ok) and (not use_rsi_filter or rsi_bear)
+
+// --- Hull MA Filter (optional) ---
+if show_hma
+    long_filtered := long_filtered and close > hull
+    short_filtered := short_filtered and close < hull
+
+// ═══════════════ ENTRIES ═══════════════
+
+if long_filtered
+    strategy.entry('L', strategy.long)
+
+if short_filtered
+    strategy.entry('S', strategy.short)
+
+// ═══════════════ PLOTS ═══════════════
+
+// --- EMAs ---
+plot(ema_fast, title='EMA Fast', color=fast_dir > 0 ? color.lime : fast_dir < 0 ? color.red : color.gray, linewidth=2)
+plot(ema_slow, title='EMA Slow', color=slow_dir > 0 ? color.green : slow_dir < 0 ? color.maroon : color.gray, linewidth=2)
+
+// --- Hull MA ---
+plot(show_hma ? hull : na, title='Hull MA', color=color.blue, linewidth=2)
+
+// --- Supertrend ---
+plot(show_st ? st_dn : na, title='ST Down', color=st_trend == 1 ? color.green : color.red, linewidth=2, style=plot.style_linebr)
+plot(show_st and st_trend == -1 ? st_dn : na, title='ST Up Fill', color=color.red, linewidth=2, style=plot.style_linebr)
+
+// --- EMA 200 ---
+plot(use_ema200_filter ? ema200 : na, title='EMA 200', color=color.orange, linewidth=1, style=plot.style_line)
+
+// --- Signal Shapes ---
+plotshape(long_filtered, title='Buy', style=shape.labelup, color=color.new(color.green, 20),
+     text='BUY', textcolor=color.black, location=location.belowbar, size=size.small)
+plotshape(short_filtered, title='Sell', style=shape.labeldown, color=color.new(color.red, 20),
+     text='SELL', textcolor=color.black, location=location.abovebar, size=size.small)
+
+// --- Bar Color ---
+macd_line = ta.ema(close, 13) - ta.ema(close, 26)
+barcolor(macd_line > macd_line[1] ? color.green : color.red)

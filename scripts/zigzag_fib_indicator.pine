@@ -1,0 +1,122 @@
+//@version=6
+indicator("Sayad AlQae - ZigZag + Fib", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ═══════════ الإعدادات ═══════════
+zz_depth  = input.int(5, "ZigZag Depth", minval=2, maxval=20, group="ZigZag")
+fib_level = input.float(0.618, "Fib Level", minval=0.1, maxval=1.0, step=0.001, group="Fibonacci")
+fib_min   = input.float(0.3, "Min Retrace", minval=0.0, maxval=1.0, step=0.05, group="Fibonacci")
+fib_max   = input.float(0.786, "Max Retrace", minval=0.0, maxval=1.0, step=0.05, group="Fibonacci")
+tp_ratio  = input.float(1.0, "TP Ratio of Leg", minval=0.5, maxval=3.0, step=0.1, group="Targets")
+sl_buffer = input.float(0.5, "SL Buffer Below Low %", minval=0.1, maxval=5.0, step=0.1, group="Targets")
+be_pct    = input.float(1.0, "Breakeven at +%", minval=0.5, maxval=5.0, step=0.1, group="Targets")
+max_bars  = input.int(480, "Max Hold Bars", minval=50, maxval=2000, group="Targets")
+show_zz   = input.bool(true, "Show ZigZag", group="Display")
+show_fibs = input.bool(true, "Show Fib Levels", group="Display")
+show_legs = input.bool(true, "Show Legs", group="Display")
+show_sig  = input.bool(true, "Show Signals", group="Display")
+
+// ═══════════ الزجزاج ═══════════
+var float[]  pp = array.new_float()
+var int[]    pb = array.new_int()
+var string[] pt_type = array.new_string()
+
+per = zz_depth * 2 + 1
+isH = high >= ta.highest(high, per)[zz_depth]
+isL = low  <= ta.lowest(low,  per)[zz_depth]
+
+if isH
+    if array.size(pt_type) == 0
+        array.push(pp, high)
+        array.push(pb, bar_index)
+        array.push(pt_type, "H")
+    else
+        last_t = array.last(pt_type)
+        if last_t != "H"
+            array.push(pp, high)
+            array.push(pb, bar_index)
+            array.push(pt_type, "H")
+
+if isL
+    if array.size(pt_type) == 0
+        array.push(pp, low)
+        array.push(pb, bar_index)
+        array.push(pt_type, "L")
+    else
+        last_t = array.last(pt_type)
+        if last_t != "L"
+            array.push(pp, low)
+            array.push(pb, bar_index)
+            array.push(pt_type, "L")
+
+// رسم الزجزاج (نتجنب رسم الخطوط البعيدة أكثر من 5000 شمعة)
+if show_zz and array.size(pt_type) > 1
+    sz = array.size(pt_type)
+    for i = 1 to sz - 1
+        x0 = array.get(pb, i-1)
+        x1 = array.get(pb, i)
+        if bar_index - x0 < 5000
+            line.new(x0, array.get(pp, i-1), x1, array.get(pp, i), color=color.rgb(255, 215, 0, 60), width=1)
+
+// ═══════════ تحليل الموجات (شمعة بشمعة) ═══════════
+var float legL   = na
+var float legH   = na
+var float retL   = na
+var float fibV   = na
+var int   legBar = na
+var bool  inWave = false
+
+if array.size(pt_type) >= 2
+    t1 = array.last(pt_type)
+    t0 = array.get(pt_type, array.size(pt_type)-2)
+    
+    if t0 == "L" and t1 == "H"
+        p0 = array.get(pp, array.size(pp)-2)
+        p1 = array.last(pp)
+        b1 = array.last(pb)
+        
+        legL   := p0
+        legH   := p1
+        legBar := b1
+        inWave := true
+        retL   := p1
+
+if inWave
+    retL := math.min(retL, low)
+
+if inWave
+    h = legH - legL
+    
+    if h > 0
+        fibV := legH - h * fib_level
+        rp = (legH - retL) / h
+        
+        if rp >= fib_min and rp <= fib_max and bar_index - legBar < 5000
+            if show_fibs
+                line.new(legBar, fibV, bar_index + 1, fibV, color=color.rgb(255, 165, 0, 50), width=1, style=line.style_dotted)
+                label.new(legBar, fibV, str.tostring(fib_level, "#.###"), color=color.rgb(255, 165, 0, 70), textcolor=color.white, style=label.style_label_left, size=size.small)
+            
+            if show_legs
+                b0 = array.get(pb, array.size(pb)-2)
+                p0 = array.get(pp, array.size(pp)-2)
+                if bar_index - b0 < 5000
+                    line.new(b0, p0, legBar, legH, color=color.rgb(0, 255, 255, 40), width=2)
+                line.new(legBar, legH, bar_index + 1, legH, color=color.rgb(0, 255, 255, 20), width=1, style=line.style_dashed)
+
+// ═══════════ إشارة الدخول ═══════════
+var bool signal = false
+
+if inWave and show_sig
+    h = legH - legL
+    
+    if h > 0
+        rp = (legH - retL) / h
+        
+        if rp >= fib_min and rp <= fib_max
+            if close > legH and close[1] <= legH
+                signal := true
+                entP = close
+                slP  = retL * (1 - sl_buffer / 100)
+                tpP  = entP + h * tp_ratio
+                label.new(bar_index, low, "▲ LONG\nTP: " + str.tostring(tpP, "#.#####") + "\nSL: " + str.tostring(slP, "#.#####"), color=color.green, textcolor=color.white, style=label.style_label_up, size=size.small)
+
+plotshape(signal and show_sig, title="Entry", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.small)

@@ -1,0 +1,206 @@
+//@version=5
+indicator("🐋 صياد القاع — ZigZag + Fib", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ═══════════════ الإعدادات — كلها قابلة للتعديل ═══════════════
+
+// زجزاج
+zigzag_depth   = input.int(5,   "عمق الزجزاج (N)",      minval=2, maxval=20, group="🔷 زجزاج")
+zigzag_source  = input.string("High/Low", "مصدر الزجزاج", options=["High/Low", "Close"])
+
+// فيبوناتشي
+fib_enable     = input.bool(true, "⏐ تفعيل فيبو",         group="📐 فيبوناتشي")
+fib_level_show = input.float(0.618, "مستوى فيبو",          minval=0.1, maxval=1.0, step=0.001, group="📐 فيبوناتشي")
+fib_min_retrace = input.float(0.3, "أدنى تصحيح مسموح",     minval=0.0, maxval=1.0, step=0.05, group="📐 فيبوناتشي")
+fib_max_retrace = input.float(0.786,"أقصى تصحيح مسموح",    minval=0.0, maxval=1.0, step=0.05, group="📐 فيبوناتشي")
+
+// دخول وخروج
+entry_mode     = input.string("اختراق القمة", "نوع الدخول", options=["اختراق القمة", "RSI زجزاج داخلي"], group="🎯 دخول وخروج")
+rsi_length     = input.int(14,  "طول RSI",                minval=5, maxval=50, group="🎯 دخول وخروج")
+rsi_zigzag_n   = input.int(2,   "زجزاج RSI داخلي (N)",    minval=1, maxval=5, group="🎯 دخول وخروج")
+tp_leg_ratio   = input.float(1.0,"نسبة الهدف من الضلع",    minval=0.5, maxval=3.0, step=0.1, group="🎯 دخول وخروج")
+sl_buffer_pct  = input.float(0.5,"مسافة SL تحت القاع (%)", minval=0.1, maxval=5.0, step=0.1, group="🎯 دخول وخروج")
+be_trigger_pct = input.float(1.0,"تفعيل التعادل عند +%",   minval=0.5, maxval=5.0, step=0.1, group="🎯 دخول وخروج")
+max_hold_bars  = input.int(480,  "أقصى شمعات للصفقة",      minval=50, maxval=2000, group="🎯 دخول وخروج")
+
+// عرض
+show_zigzag    = input.bool(true, "إظهار الزجزاج",         group="👁 العرض")
+show_fib       = input.bool(true, "إظهار فيبو",            group="👁 العرض")
+show_legs      = input.bool(true, "إظهار الأضلاع",         group="👁 العرض")
+show_signals   = input.bool(true, "إظهار إشارات",          group="👁 العرض")
+
+// ═══════════════ RSI ═══════════════
+rsi = ta.rsi(close, rsi_length)
+
+// ═══════════════ الزجزاج ═══════════════
+var float[] pivot_prices = array.new_float()
+var int[]   pivot_bars   = array.new_int()
+var string[] pivot_types = array.new_string()
+
+// البحث عن القمم والقيعان
+is_high = zigzag_source == "High/Low" ? 
+    high >= highest(high, zigzag_depth * 2 + 1)[zigzag_depth] :
+    close >= highest(close, zigzag_depth * 2 + 1)[zigzag_depth]
+
+is_low = zigzag_source == "High/Low" ?
+    low <= lowest(low, zigzag_depth * 2 + 1)[zigzag_depth] :
+    close <= lowest(close, zigzag_depth * 2 + 1)[zigzag_depth]
+
+if is_high
+    last_type = array.size(pivot_types) > 0 ? array.last(pivot_types) : ""
+    if last_type != "H" or bar_index - array.last(pivot_bars) > zigzag_depth
+        array.push(pivot_prices, zigzag_source == "High/Low" ? high : close)
+        array.push(pivot_bars, bar_index)
+        array.push(pivot_types, "H")
+
+if is_low
+    last_type = array.size(pivot_types) > 0 ? array.last(pivot_types) : ""
+    if last_type != "L" or bar_index - array.last(pivot_bars) > zigzag_depth
+        array.push(pivot_prices, zigzag_source == "High/Low" ? low : close)
+        array.push(pivot_bars, bar_index)
+        array.push(pivot_types, "L")
+
+// ═══════════════ رسم الزجزاج ═══════════════
+if show_zigzag
+    for i = 1 to array.size(pivot_bars) - 1
+        l1 = line.new(
+            array.get(pivot_bars, i-1), array.get(pivot_prices, i-1),
+            array.get(pivot_bars, i),   array.get(pivot_prices, i),
+            color=color.rgb(255, 215, 0, 60), width=1, extend=extend.none)
+        line.delete(l1[1])
+
+// ═══════════════ تحليل الموجات والإشارات ═══════════════
+var float leg_low_price  = na
+var float leg_high_price = na
+var int   leg_high_bar   = na
+var float retrace_low    = na
+var float fib_level      = na
+var float tp_target      = na
+var float sl_price       = na
+var bool  be_triggered   = false
+var bool  in_trade       = false
+var float entry_price    = na
+var int   entry_bar      = na
+var string trade_dir     = ""
+
+// RSI زجزاج — البحث عن قمم وقيعان داخلية
+rsi_pivot_high = na
+rsi_pivot_high_bar = na
+rsi_pivot_low  = na
+rsi_pivot_low_bar  = na
+
+if rsi_zigzag_n > 0
+    rsi_ph = rsi >= highest(rsi, rsi_zigzag_n * 2 + 1)[rsi_zigzag_n]
+    rsi_pl = rsi <= lowest(rsi, rsi_zigzag_n * 2 + 1)[rsi_zigzag_n]
+    if rsi_ph
+        rsi_pivot_high := rsi
+        rsi_pivot_high_bar := bar_index
+    if rsi_pl
+        rsi_pivot_low := rsi
+        rsi_pivot_low_bar := bar_index
+
+// كشف نمط: Low → High (ضلع صاعد)
+if array.size(pivot_types) >= 2
+    last_type  = array.get(pivot_types, array.size(pivot_types) - 1)
+    prev_type  = array.get(pivot_types, array.size(pivot_types) - 2)
+    prev_price = array.get(pivot_prices, array.size(pivot_types) - 2)
+    last_price = array.get(pivot_prices, array.size(pivot_types) - 1)
+    prev_bar   = array.get(pivot_bars, array.size(pivot_types) - 2)
+    last_bar   = array.get(pivot_bars, array.size(pivot_types) - 1)
+    
+    if prev_type == "L" and last_type == "H"
+        leg_low_price  := prev_price
+        leg_high_price := last_price
+        leg_high_bar   := last_bar
+        retrace_low    := low[bar_index - last_bar]
+        
+        // البحث عن أدنى سعر بين القمة والحين
+        for j = 0 to bar_index - last_bar
+            retrace_low := math.min(retrace_low, low[j])
+        
+        leg_height  = leg_high_price - leg_low_price
+        retrace_pct = leg_height > 0 ? (leg_high_price - retrace_low) / leg_height : na
+        
+        fib_level := leg_high_price - leg_height * fib_level_show
+        tp_target := na  // بيتحسب عند الدخول
+        sl_price  := na
+        
+        // تحقق من التصحيح في نطاق مسموح
+        if not na(retrace_pct) and retrace_pct >= fib_min_retrace and retrace_pct <= fib_max_retrace
+            
+            if entry_mode == "اختراق القمة"
+                // دخول: إغلاق فوق القمة
+                if close > leg_high_price and close[1] <= leg_high_price
+                    entry_price := close
+                    entry_bar   := bar_index
+                    in_trade    := true
+                    be_triggered := false
+                    tp_target   := entry_price + leg_height * tp_leg_ratio
+                    sl_price    := retrace_low * (1 - sl_buffer_pct / 100)
+                    trade_dir   := "اختراق"
+                    
+            else if entry_mode == "RSI زجزاج داخلي"
+                // دخول: RSI يكسر آخر قمة داخلية
+                if not na(rsi_pivot_high) and rsi > rsi_pivot_high and rsi[1] <= rsi_pivot_high
+                    entry_price := close
+                    entry_bar   := bar_index
+                    in_trade    := true
+                    be_triggered := false
+                    tp_target   := entry_price + leg_height * tp_leg_ratio
+                    sl_price    := retrace_low * (1 - sl_buffer_pct / 100)
+                    trade_dir   := "RSI"
+
+// ═══════════════ إدارة الصفقة ═══════════════
+if in_trade
+    bars_held = bar_index - entry_bar
+    
+    // تعادل
+    if not be_triggered and close >= entry_price * (1 + be_trigger_pct / 100)
+        be_triggered := true
+        sl_price := entry_price
+    
+    // خروج SL
+    if close <= sl_price
+        if show_signals
+            label.new(bar_index, low, "SL\n▼", color=color.red, textcolor=color.white, style=label.style_label_down, size=size.small)
+        in_trade := false
+        entry_price := na
+    
+    // خروج TP
+    if close >= tp_target
+        if show_signals
+            label.new(bar_index, high, "TP\n▲", color=color.green, textcolor=color.white, style=label.style_label_up, size=size.small)
+        in_trade := false
+        entry_price := na
+    
+    // خروج وقت
+    if bars_held >= max_hold_bars
+        if show_signals
+            label.new(bar_index, high, "⏰", color=color.gray, textcolor=color.white, style=label.style_label_down, size=size.small)
+        in_trade := false
+        entry_price := na
+    
+    // رسم الصفقة
+    if show_signals and in_trade
+        // خط الدخول
+        line.new(entry_bar, entry_price, bar_index, entry_price, color=color.green, width=1, style=line.style_dashed)
+        // SL
+        line.new(entry_bar, sl_price, bar_index, sl_price, color=color.red, width=1, style=line.style_dashed)
+        // هدف
+        line.new(entry_bar, tp_target, bar_index, tp_target, color=color.green, width=1, style=line.style_dotted)
+
+// ═══════════════ رسم الأضلاع ═══════════════
+if show_legs and not na(leg_high_price)
+    // الضلع الأول
+    line.new(prev_bar, leg_low_price, last_bar, leg_high_price, color=color.rgb(0, 255, 255, 30), width=2, extend=extend.none)
+    // خط القمة
+    line.new(last_bar, leg_high_price, bar_index, leg_high_price, color=color.rgb(0, 255, 255, 30), width=1, style=line.style_dashed)
+
+// ═══════════════ رسم فيبو ═══════════════
+if show_fib and not na(fib_level) and not na(leg_high_price)
+    line.new(last_bar, fib_level, bar_index, fib_level, color=color.rgb(255, 165, 0, 40), width=1, style=line.style_dotted)
+    if bar_index == last_bar + 1
+        label.new(last_bar, fib_level, "0.618", color=color.rgb(255, 165, 0, 80), textcolor=color.white, style=label.style_label_left, size=size.small)
+
+// ═══════════════ إشارات دخول ═══════════════
+if show_signals and entry_price > 0 and bar_index == entry_bar
+    label.new(entry_bar, low, "دخول\n▲", color=color.green, textcolor=color.white, style=label.style_label_up, size=size.small)

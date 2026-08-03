@@ -1,0 +1,138 @@
+//@version=6
+strategy("QQE + SSL + EMA200 Strategy", shorttitle="QQE_SSL_EMA", overlay=true,
+     pyramiding=0, initial_capital=1000, currency=currency.USD,
+     commission_value=0.2, commission_type=strategy.commission.percent)
+
+// ═══════════════ QQE MOD ═══════════════
+
+// Primary QQE
+rsiLen1 = input.int(6, "RSI Length", group="Primary QQE")
+smooth1 = input.int(5, "RSI Smoothing", group="Primary QQE")
+factor1 = input.float(3.0, "QQE Factor", group="Primary QQE")
+
+// Secondary QQE
+rsiLen2 = input.int(6, "RSI Length", group="Secondary QQE")
+smooth2 = input.int(5, "RSI Smoothing", group="Secondary QQE")
+factor2 = input.float(1.61, "QQE Factor", group="Secondary QQE")
+
+// Bollinger on Primary
+bbLen = input.int(50, "BB Length", group="Bollinger Bands")
+bbMult = input.float(0.35, "BB Multiplier", minval=0.001, maxval=5, step=0.1, group="Bollinger Bands")
+qqeThreshold = input.float(3.0, "Signal Threshold", group="Signals")
+
+// QQE Function
+qqe(rsiLen, smooth, factor, src) =>
+    wildersLen = rsiLen * 2 - 1
+    rsiVal = ta.rsi(src, rsiLen)
+    smoothedRsi = ta.ema(rsiVal, smooth)
+    atrRsi = math.abs(smoothedRsi - smoothedRsi[1])
+    smoothedAtrRsi = ta.ema(atrRsi, wildersLen)
+    dynamicAtr = smoothedAtrRsi * factor
+    
+    var float longBand = na
+    var float shortBand = na
+    var int trend = 0
+    
+    newLong = smoothedRsi - dynamicAtr
+    newShort = smoothedRsi + dynamicAtr
+    
+    longBand := na(longBand[1]) ? newLong : (smoothedRsi[1] > longBand[1] and smoothedRsi > longBand[1] ? math.max(longBand[1], newLong) : newLong)
+    shortBand := na(shortBand[1]) ? newShort : (smoothedRsi[1] < shortBand[1] and smoothedRsi < shortBand[1] ? math.min(shortBand[1], newShort) : newShort)
+    
+    if ta.cross(smoothedRsi, shortBand[1])
+        trend := 1
+    else if ta.cross(longBand[1], smoothedRsi)
+        trend := -1
+    
+    qqeLine = trend == 1 ? longBand : shortBand
+    [qqeLine, smoothedRsi, trend]
+
+// Calculate QQE
+[primaryLine, primaryRsi, primaryTrend] = qqe(rsiLen1, smooth1, factor1, close)
+[secondaryLine, secondaryRsi, secondaryTrend] = qqe(rsiLen2, smooth2, factor2, close)
+
+// Bollinger on primary (zero-centered)
+primaryZero = primaryLine - 50
+bbBasis = ta.sma(primaryZero, bbLen)
+bbDev = bbMult * ta.stdev(primaryZero, bbLen)
+bbUpper = bbBasis + bbDev
+bbLower = bbBasis - bbDev
+
+secondaryZero = secondaryRsi - 50
+
+// QQE Signals
+qqeBlue = secondaryZero > qqeThreshold and (primaryRsi - 50) > bbUpper
+qqeRed = secondaryZero < -qqeThreshold and (primaryRsi - 50) < bbLower
+
+// ═══════════════ SSL HYBRID ═══════════════
+
+sslGroup = "SSL Hybrid"
+baselineLen = input.int(60, "Baseline Length", group=sslGroup)
+exitLen = input.int(15, "Exit Length", group=sslGroup)
+
+// HMA function
+hma(src, len) =>
+    ta.wma(2 * ta.wma(src, len / 2) - ta.wma(src, len), math.round(math.sqrt(len)))
+
+// Baseline (HMA)
+baseline = hma(close, baselineLen)
+
+// SSL Exit
+exitHigh = hma(high, exitLen)
+exitLow = hma(low, exitLen)
+
+var int hlv = 0
+hlv := close > exitHigh ? 1 : close < exitLow ? -1 : hlv[1]
+sslExit = hlv < 0 ? exitHigh : exitLow
+
+// SSL Signals
+sslBull = ta.crossover(close, sslExit)
+sslBear = ta.crossunder(close, sslExit)
+
+// ═══════════════ EMA FILTER ═══════════════
+
+emaGroup = "EMA Filter"
+emaLen = input.int(200, "EMA Length", group=emaGroup, options=[50, 100, 200])
+emaLine = ta.ema(close, emaLen)
+
+// ═══════════════ ENTRY CONDITIONS ═══════════════
+
+longCondition = qqeBlue and sslBull and close > emaLine
+shortCondition = qqeRed and sslBear and close < emaLine
+
+// ═══════════════ EXECUTION ═══════════════
+
+if longCondition
+    strategy.close("Short", comment="XShort")
+    strategy.entry("Long", strategy.long, comment="LONG")
+
+if shortCondition
+    strategy.close("Long", comment="XLong")
+    strategy.entry("Short", strategy.short, comment="SHORT")
+
+// ═══════════════ PLOTS ═══════════════
+
+showIndicators = input.bool(true, "Show Indicators", group="Display")
+
+// EMA
+plot(showIndicators ? emaLine : na, "EMA", close > emaLine ? color.green : color.red, 2)
+
+// Baseline
+plot(showIndicators ? baseline : na, "Baseline", color.blue, 2)
+
+// SSL Exit
+plot(showIndicators ? sslExit : na, "SSL Exit", close > sslExit ? color.green : color.red, 1, plot.style_circles)
+
+// QQE Signal markers
+plotshape(longCondition, "QQE Blue", shape.labelup, location.belowbar, color.new(color.blue, 20),
+     size=size.small, text="QQE+SSL", textcolor=color.white)
+plotshape(shortCondition, "QQE Red", shape.labeldown, location.abovebar, color.new(color.red, 20),
+     size=size.small, text="QQE+SSL", textcolor=color.white)
+
+// Bar color
+barcolor(close > emaLine ? close > baseline ? color.green : color.orange : close < baseline ? color.red : color.orange)
+
+// ═══════════════ ALERTS ═══════════════
+
+alertcondition(longCondition, "BUY Signal", "QQE+SSL+EMA BUY — All conditions met")
+alertcondition(shortCondition, "SELL Signal", "QQE+SSL+EMA SELL — All conditions met")

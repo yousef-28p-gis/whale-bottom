@@ -1,0 +1,4 @@
+/data/profiles/trading28pbot/home/.local/lib/python3.13/site-packages/telethon/client/auth.py:437: UserWarning: force_sms has been deprecated and no longer works
+  warnings.warn('force_sms has been deprecated and no longer works')
+CODE_SENT|eabc61c2a71da7547d
+TIMEOUT_NO_CODE

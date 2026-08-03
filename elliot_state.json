@@ -1,0 +1,22 @@
+{
+  "active": [
+    {
+      "symbol": "NIL",
+      "entry_price": 0.03342,
+      "sl": 0.03318325,
+      "tp_half": 0.033595,
+      "tp_full": 0.03384,
+      "be": 0.03342,
+      "entry_bar_ts": 1785416629889,
+      "entry_time": "2026-07-30T13:03:49.889179+00:00",
+      "half_exited": false,
+      "half_pnl": 0.0,
+      "L3_price": 0.03335,
+      "H3_price": 0.03384,
+      "w5_size": 0.00049
+    }
+  ],
+  "closed": [],
+  "total_trades": 0,
+  "wins": 0
+}

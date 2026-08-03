@@ -7,9 +7,7 @@ DATA_DIR = '/data/trading28/data/3m_4months'
 STABLES = {'USDT','USDC','BUSD','DAI','TUSD','USDE','XUSD','BFUSD','FDUSD','USDD','FRAX','LUSD','PYUSD','USDJ','RLUSD','XAUT','USD1','EUR'}
 
 CONFIGS = [
-    ("TP2.0_مركب",    2.0, 1.5, 30, 0.10, 6, 0.10, 35, True),
-    ("TP1.5_مركب",    1.5, 1.0, 20, 0.10, 6, 0.10, 35, True),
-    ("TP2.5_مركب",    2.5, 2.0, 40, 0.20, 8, 0.10, 35, True),
+    ("⚡ صياد البرق", 1.3, 0.5, 12, 0.02, 4, 0.10, 35, True),
 ]
 
 def compute_indicators(df):
@@ -48,6 +46,13 @@ print("⏳ جمع الصفقات...", flush=True)
 with open('/data/trading28/config/shariah_coins.json') as f:
     shariah = json.load(f)
 COINS = [c for c in shariah['halal']+shariah['halal2'] if c not in STABLES]
+EXCLUDE = {'ETH','BTC','TRX','XRP','QI','LSK','GLMR','XTZ','YFI',
+           'TLM','0G','LA','DYM','VANRY','SENT','VET','COOKIE','HEI','ACT','CKB','AR','RSR','AXS','XEC',
+           'LPT','KNC','LTC','SFP','IOST','KAVA','VTHO','ZRX','1INCH','CVX','WAXP','ZIL','VANA','YGG','SUI',
+           'STEEM','SOL',
+           'HBAR','DYDX','SUSHI','RED','SHIB','BCH','DOGE','GAS','SPELL','ETC','VIRTUAL','UNI','SYRUP','MAV',
+           'ARK','IMX','NEO','RLC','LINK','FLOKI','CVC','BOME','SCR','ASTER','BROCCOLI714','ADA','TFUEL','DOT'}
+COINS = [c for c in COINS if c not in EXCLUDE]
 
 all_trades = {c[0]: [] for c in CONFIGS}
 processed = 0; t0 = time.time()
@@ -86,11 +91,11 @@ for coin in COINS:
                 elif cur>=p['tp']:
                     p['pnl']=round(tp-COMM,4); p['exit_type']='TP'; p['exit_ns']=int(ts_arr[i]); all_trades[name].append(p); del active[j]
                 elif cur<=p['sl']:
-                    p['pnl']=round(-sl-COMM,4); p['exit_type']='SL'; p['exit_ns']=int(ts_arr[i]); all_trades[name].append(p); del active[j]
+                    p['pnl']=round((cur/e-1)*100-COMM,4); p['exit_type']='SL'; p['exit_ns']=int(ts_arr[i]); all_trades[name].append(p); del active[j]
                 elif p['pl_ok']:
                     if cur>p['peak']: p['peak']=cur; p['trail']=cur*tr_r
                     if cur<=p['trail']:
-                        p['pnl']=round((p['trail']/e-1)*100-COMM,4); p['exit_type']='TRAIL'; p['exit_ns']=int(ts_arr[i]); all_trades[name].append(p); del active[j]
+                        p['pnl']=round((cur/e-1)*100-COMM,4); p['exit_type']='TRAIL'; p['exit_ns']=int(ts_arr[i]); all_trades[name].append(p); del active[j]
                 else:
                     pl_p = e+(p['tp']-e)*(pl/100)
                     if cur>=pl_p: p['pl_ok']=True; p['peak']=cur; p['trail']=cur*tr_r

@@ -1,0 +1,93 @@
+//@version=6
+indicator("EMA Ribbon + MultiTF Signal", "MTF_EMA", overlay=true, max_labels_count=500)
+
+// ═══════════════ EMA Ribbon ═══════════════
+ema5   = ta.ema(close, 5)
+ema9   = ta.ema(close, 9)
+ema21  = ta.ema(close, 21)
+ema50  = ta.ema(close, 50)
+ema100 = ta.ema(close, 100)
+ema200 = ta.ema(close, 200)
+
+c_green  = color.rgb(0, 200, 83)
+c_orange = color.rgb(255, 145, 0)
+c_blue   = color.rgb(41, 121, 255)
+c_dkblue = color.rgb(13, 71, 161)
+c_gray   = color.rgb(158, 158, 158)
+c_lgreen = color.rgb(100, 221, 23)
+
+plot(ema5,   "EMA5",   color=c_lgreen, linewidth=1)
+plot(ema9,   "EMA9",   color=c_blue,   linewidth=1)
+plot(ema21,  "EMA21",  color=c_gray,   linewidth=1)
+plot(ema50,  "EMA50",  color=c_dkblue, linewidth=2)
+plot(ema100, "EMA100", color=c_orange, linewidth=2)
+plot(ema200, "EMA200", color=c_green,  linewidth=2)
+
+// ═══════════════ Multi-TF Trend ═══════════════
+get_tf_trend(tf) =>
+    e50  = request.security(syminfo.tickerid, tf, ta.ema(close, 50))
+    e200 = request.security(syminfo.tickerid, tf, ta.ema(close, 200))
+    if na(e50) or na(e200)
+        [0, "⏳", color.gray]
+    else if e50 > e200
+        [1, "🟢 صاعد", color.green]
+    else if e50 < e200
+        [-1, "🔴 هابط", color.red]
+    else
+        [0, "🟡 عرضي", color.gray]
+
+[t15_dir, t15_txt, t15_col] = get_tf_trend("15")
+[t60_dir, t60_txt, t60_col] = get_tf_trend("60")
+[t240_dir, t240_txt, t240_col] = get_tf_trend("240")
+[tD_dir, tD_txt, tD_col] = get_tf_trend("D")
+[tW_dir, tW_txt, tW_col] = get_tf_trend("W")
+
+// ═══════════════ Trend Table ═══════════════
+show_table = input.bool(true, "إظهار جدول الترند", group="📊 Multi-TF")
+var table tf_tbl = table.new(position.top_right, 2, 6,
+     color.new(color.black, 85), color.new(color.gray, 40), 1, color.black, 1)
+
+if show_table
+    c_hdr = color.rgb(255, 215, 0)
+    table.cell(tf_tbl, 0, 0, "TF", text_color=c_hdr, text_size=size.small)
+    table.cell(tf_tbl, 1, 0, "اتجاه", text_color=c_hdr, text_size=size.small)
+    table.cell(tf_tbl, 0, 1, "15m", text_color=color.white, text_size=size.small)
+    table.cell(tf_tbl, 1, 1, t15_txt, text_color=t15_col, text_size=size.small)
+    table.cell(tf_tbl, 0, 2, "1h", text_color=color.white, text_size=size.small)
+    table.cell(tf_tbl, 1, 2, t60_txt, text_color=t60_col, text_size=size.small)
+    table.cell(tf_tbl, 0, 3, "4h", text_color=color.white, text_size=size.small)
+    table.cell(tf_tbl, 1, 3, t240_txt, text_color=t240_col, text_size=size.small)
+    table.cell(tf_tbl, 0, 4, "1D", text_color=color.white, text_size=size.small)
+    table.cell(tf_tbl, 1, 4, tD_txt, text_color=tD_col, text_size=size.small)
+    table.cell(tf_tbl, 0, 5, "1W", text_color=color.white, text_size=size.small)
+    table.cell(tf_tbl, 1, 5, tW_txt, text_color=tW_col, text_size=size.small)
+
+// ═══════════════ Entry Signals (1m/5m) ═══════════════
+// All 3 TFs must be bullish
+bullish_tf = t15_dir == 1 and t60_dir == 1 and t240_dir == 1
+
+// Entry: price pulls back to EMA50 in uptrend + bounce
+pullback_ema50 = ta.crossunder(close, ema50) and close[1] > ema50[1]
+bounce_ema50  = ta.crossover(close, ema50) and bullish_tf and close > ema50
+
+// Entry: price touches EMA200 in strong uptrend
+touch_ema200  = low <= ema200 and close > ema200 and bullish_tf and close > open
+
+// Entry: EMA5 crosses above EMA9 (micro momentum)
+ema_cross = ta.crossover(ema5, ema9) and bullish_tf and close > ema50
+
+// Combined signal
+entry_long = (bounce_ema50 or touch_ema200 or ema_cross) and bullish_tf
+
+// ═══════════════ Plot Signals ═══════════════
+plotshape(entry_long, "🚀 دخول", shape.triangleup, location.belowbar,
+          color.rgb(0, 230, 118), 0, "LONG", color.white, false, size.small)
+
+// Alert
+alertcondition(entry_long, "إشارة شراء", "15m+1h+4h صاعد + ارتداد من EMA")
+alertcondition(bullish_tf and not entry_long, "ترند صاعد", "كل الفريمات صاعدة - انتظر ارتداد")
+
+// ═══════════════ Background Color ═══════════════
+bg_color = bullish_tf ? color.new(color.green, 92) : 
+           (t15_dir == -1 and t60_dir == -1) ? color.new(color.red, 92) : na
+bgcolor(bg_color, title="خلفية الترند")

@@ -1,0 +1,116 @@
+//@version=6
+indicator("5 خطوط + نافذة الترند", "5Lines_MTF", overlay=true, max_labels_count=500)
+
+// ═══════════════════════════════════════════════════
+// ① خط الستوب — Supertrend
+// ═══════════════════════════════════════════════════
+st_factor = input.float(3.0, "معامل الستوب", minval=1.0, step=0.5, group="① خط الستوب")
+st_period = input.int(10, "فترة الستوب", minval=5, maxval=50, group="① خط الستوب")
+[st_trend, st_line] = ta.supertrend(st_factor, st_period)
+st_up   = st_trend == 1
+st_down = st_trend == -1
+plot(st_line, "① ستوب", color=st_up ? color.green : color.red, linewidth=2)
+
+// ═══════════════════════════════════════════════════
+// ② خط تقاطع الشراء — EMA سريع
+// ═══════════════════════════════════════════════════
+buy_len = input.int(9, "② طول EMA الشراء", minval=2, maxval=200, group="②③ التقاطع")
+buy_ema = ta.ema(close, buy_len)
+plot(buy_ema, "② شراء", color=color.rgb(41, 121, 255), linewidth=2)
+
+// ═══════════════════════════════════════════════════
+// ③ خط تقاطع البيع — EMA متوسط
+// ═══════════════════════════════════════════════════
+sell_len = input.int(21, "③ طول EMA البيع", minval=2, maxval=200, group="②③ التقاطع")
+sell_ema = ta.ema(close, sell_len)
+plot(sell_ema, "③ بيع", color=color.rgb(255, 145, 0), linewidth=2)
+
+// ═══════════════════════════════════════════════════
+// ④ خط الترند/عرضي — EMA 50 حسب زاوية الميل
+// ═══════════════════════════════════════════════════
+trend_len   = input.int(50, "④ طول EMA الترند", minval=10, maxval=300, group="④ الترند/عرضي")
+angle_bars  = input.int(5, "شمعات حساب الزاوية", minval=2, maxval=50, group="④ الترند/عرضي")
+angle_limit = input.float(0.08, "حد الزاوية %", minval=0.01, maxval=2.0, step=0.01, group="④ الترند/عرضي")
+
+trend_ema   = ta.ema(close, trend_len)
+trend_slope = (trend_ema - trend_ema[angle_bars]) / trend_ema[angle_bars] * 100
+
+trend_up   = trend_slope > angle_limit
+trend_down = trend_slope < -angle_limit
+
+trend_color = trend_up ? color.green : trend_down ? color.red : color.gray
+plot(trend_ema, "④ ترند/عرضي", color=trend_color, linewidth=3)
+
+// ═══════════════════════════════════════════════════
+// ⑤ خط مرجعي — EMA 200
+// ═══════════════════════════════════════════════════
+ref_ema = ta.ema(close, 200)
+plot(ref_ema, "⑤ مرجع 200", color=color.new(color.white, 70), linewidth=1)
+
+// ═══════════════════════════════════════════════════
+// إشارات التقاطع
+// ═══════════════════════════════════════════════════
+buy_x  = ta.crossover(close, buy_ema)
+sell_x = ta.crossunder(close, sell_ema)
+
+plotshape(buy_x, "شراء", shape.triangleup, location.belowbar, color.green, 0, "شراء", color.white, false, size.small)
+plotshape(sell_x, "بيع", shape.triangledown, location.abovebar, color.red, 0, "بيع", color.white, false, size.small)
+
+alertcondition(buy_x, "إشارة شراء", "سعر أغلق فوق EMA الشراء")
+alertcondition(sell_x, "إشارة بيع", "سعر أغلق تحت EMA البيع")
+
+// ═══════════════════════════════════════════════════
+// نافذة الترند — من 15 دقيقة إلى الأسبوعي
+// ═══════════════════════════════════════════════════
+show_table = input.bool(true, "إظهار نافذة الترند", group="📊 النافذة")
+
+// دالة تحديد الاتجاه لكل فريم: EMA50 مقابل EMA200
+get_tf_trend(tf) =>
+    e50  = request.security(syminfo.tickerid, tf, ta.ema(close, 50))
+    e200 = request.security(syminfo.tickerid, tf, ta.ema(close, 200))
+    if e50 > e200 * 1.002
+        [1, "صاعد ▲"]
+    else if e50 < e200 * 0.998
+        [-1, "هابط ▼"]
+    else
+        [0, "لا اتجاه ▬"]
+
+[t15_dir, t15_txt]   = get_tf_trend("15")
+[t60_dir, t60_txt]   = get_tf_trend("60")
+[t240_dir, t240_txt] = get_tf_trend("240")
+[tD_dir, tD_txt]     = get_tf_trend("D")
+[tW_dir, tW_txt]     = get_tf_trend("W")
+
+dir_color(d) => d == 1 ? color.green : d == -1 ? color.red : color.gray
+
+// الإجماع
+cons_sum = t15_dir + t60_dir + t240_dir + tD_dir + tW_dir
+cons_txt = cons_sum > 1 ? "🟢 إجماع: صاعد" : cons_sum < -1 ? "🔴 إجماع: هابط" : "🟡 إجماع: متضارب"
+cons_col = cons_sum > 1 ? color.green : cons_sum < -1 ? color.red : color.gray
+
+// بناء الجدول
+var table tf_tbl = table.new(position.top_right, 2, 7,
+     color.new(color.black, 80), color.new(color.gray, 50), 1, color.black, 1)
+
+c_hdr = color.rgb(255, 215, 0)
+c_txt = color.white
+
+table.cell(tf_tbl, 0, 0, "الإطار", text_color=c_hdr, text_size=size.small)
+table.cell(tf_tbl, 1, 0, "الاتجاه", text_color=c_hdr, text_size=size.small)
+
+table.cell(tf_tbl, 0, 1, "15 د", text_color=c_txt, text_size=size.small)
+table.cell(tf_tbl, 1, 1, t15_txt, text_color=dir_color(t15_dir), text_size=size.small)
+
+table.cell(tf_tbl, 0, 2, "1 س", text_color=c_txt, text_size=size.small)
+table.cell(tf_tbl, 1, 2, t60_txt, text_color=dir_color(t60_dir), text_size=size.small)
+
+table.cell(tf_tbl, 0, 3, "4 س", text_color=c_txt, text_size=size.small)
+table.cell(tf_tbl, 1, 3, t240_txt, text_color=dir_color(t240_dir), text_size=size.small)
+
+table.cell(tf_tbl, 0, 4, "يوم", text_color=c_txt, text_size=size.small)
+table.cell(tf_tbl, 1, 4, tD_txt, text_color=dir_color(tD_dir), text_size=size.small)
+
+table.cell(tf_tbl, 0, 5, "أسبوع", text_color=c_txt, text_size=size.small)
+table.cell(tf_tbl, 1, 5, tW_txt, text_color=dir_color(tW_dir), text_size=size.small)
+
+table.cell(tf_tbl, 0, 6, cons_txt, text_color=cons_col, text_size=size.small)

@@ -1,0 +1,31 @@
+{
+  "active": [
+    {
+      "symbol": "SKL",
+      "entry_price": 0.00363,
+      "sl": 0.0036019,
+      "tp_full": 0.0036663,
+      "tp_half": 0.0036481499999999997,
+      "be": 0.00363,
+      "entry_bar_ts": 1785381535131,
+      "entry_time": "2026-07-30T03:18:55.132168+00:00",
+      "half_exited": false,
+      "half_pnl": 0.0
+    },
+    {
+      "symbol": "PROM",
+      "entry_price": 1.93,
+      "sl": 1.917365,
+      "tp_full": 1.9493,
+      "tp_half": 1.9396499999999997,
+      "be": 1.93,
+      "entry_bar_ts": 1785394105598,
+      "entry_time": "2026-07-30T06:48:25.598987+00:00",
+      "half_exited": true,
+      "half_pnl": 0.4
+    }
+  ],
+  "closed": [],
+  "total_trades": 0,
+  "wins": 0
+}

@@ -1,0 +1,84 @@
+{
+  "active_positions": [
+    {
+      "symbol": "EDU",
+      "entry_price": 0.0311,
+      "entry_time": "2026-07-29T08:42:11.191457+00:00",
+      "tp": 0.031877499999999996,
+      "pl_triggered": false,
+      "peak": 0.0311,
+      "trail_price": 0.0311,
+      "entry_bar_ts": 1785314520000
+    },
+    {
+      "symbol": "VANA",
+      "entry_price": 1.133,
+      "entry_time": "2026-07-29T09:27:59.077214+00:00",
+      "tp": 1.161325,
+      "pl_triggered": false,
+      "peak": 1.133,
+      "trail_price": 1.133,
+      "entry_bar_ts": 1785317220000
+    }
+  ],
+  "closed_positions": [
+    {
+      "symbol": "REQ",
+      "entry_price": 0.0542,
+      "entry_time": "2026-07-28T20:15:28.987981+00:00",
+      "tp": 0.05555499999999999,
+      "pl_triggered": true,
+      "peak": 0.055,
+      "trail_price": 0.0549725,
+      "entry_bar_ts": 1785269700000,
+      "exit_reason": "TRAIL",
+      "exit_pnl": -0.7535,
+      "exit_price": 0.0539,
+      "exit_time": "2026-07-28T21:37:05.560046+00:00"
+    },
+    {
+      "symbol": "FET",
+      "entry_price": 0.1389,
+      "entry_time": "2026-07-28T22:57:13.544610+00:00",
+      "tp": 0.14237249999999999,
+      "pl_triggered": false,
+      "peak": 0.1389,
+      "trail_price": 0.1389,
+      "entry_bar_ts": 1785279420000,
+      "exit_reason": "TIME",
+      "exit_pnl": -2.5758,
+      "exit_price": 0.1356,
+      "exit_time": "2026-07-29T06:58:02.259418+00:00"
+    },
+    {
+      "symbol": "XVS",
+      "entry_price": 2.8,
+      "entry_time": "2026-07-28T23:04:05.995916+00:00",
+      "tp": 2.8699999999999997,
+      "pl_triggered": false,
+      "peak": 2.8,
+      "trail_price": 2.8,
+      "entry_bar_ts": 1785279780000,
+      "exit_reason": "TIME",
+      "exit_pnl": -1.6286,
+      "exit_price": 2.76,
+      "exit_time": "2026-07-29T07:07:03.074162+00:00"
+    },
+    {
+      "symbol": "SAPIEN",
+      "entry_price": 0.0801,
+      "entry_time": "2026-07-29T08:51:28.091788+00:00",
+      "tp": 0.0821025,
+      "pl_triggered": true,
+      "peak": 0.0808,
+      "trail_price": 0.0807596,
+      "entry_bar_ts": 1785315060000,
+      "exit_reason": "TRAIL",
+      "exit_pnl": 0.5491,
+      "exit_price": 0.0807,
+      "exit_time": "2026-07-29T09:19:02.473174+00:00"
+    }
+  ],
+  "cumulative_pnl": -4.4088,
+  "total_trades": 4
+}
